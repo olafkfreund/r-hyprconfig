@@ -92,13 +92,24 @@ pub struct App {
 impl App {
     pub async fn new(debug: bool) -> Result<Self> {
         let config = Config::load().await?;
-        let hyprctl = HyprCtl::new().await?;
+        
+        // Try to initialize hyprctl, but don't fail if it's not available
+        let hyprctl = match HyprCtl::new().await {
+            Ok(hyprctl) => hyprctl,
+            Err(e) => {
+                eprintln!("Warning: Failed to initialize hyprctl: {}", e);
+                eprintln!("Will try to load configuration from config file instead.");
+                // Create a dummy HyprCtl that will fail gracefully
+                HyprCtl::new_disconnected()
+            }
+        };
+        
         let mut ui = UI::new();
         
-        // Load current configuration from hyprctl
+        // Load current configuration from hyprctl or config file
         if let Err(e) = ui.load_current_config(&hyprctl).await {
-            eprintln!("Warning: Failed to load current Hyprland configuration: {}", e);
-            eprintln!("Using default values. Make sure Hyprland is running.");
+            eprintln!("Warning: Failed to load current configuration: {}", e);
+            eprintln!("Using default placeholder values.");
         }
 
         Ok(Self {
@@ -463,7 +474,7 @@ impl App {
                     _ => {}
                 }
             }
-            EditMode::Rule { rule_type, pattern, action, editing_field } => {
+            EditMode::Rule { rule_type: _, pattern, action, editing_field } => {
                 match key {
                     KeyCode::Enter => {
                         match self.ui.apply_edit_with_hyprctl(&self.hyprctl).await {

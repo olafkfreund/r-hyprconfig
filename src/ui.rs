@@ -555,27 +555,131 @@ impl UI {
     }
 
     pub async fn load_current_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
-        // Load ALL configuration options from hyprctl  
-        match hyprctl.get_all_options().await {
+        // Try to load from hyprctl first
+        let _hyprctl_success = match hyprctl.get_all_options().await {
             Ok(all_options) => {
                 self.populate_config_from_options(all_options);
+                true
             }
             Err(e) => {
                 eprintln!("Warning: Failed to load all options from hyprctl: {}", e);
                 // Fall back to loading individual sections
-                self.load_general_config(hyprctl).await?;
-                self.load_input_config(hyprctl).await?;
-                self.load_decoration_config(hyprctl).await?;
-                self.load_animations_config(hyprctl).await?;
-                self.load_gestures_config(hyprctl).await?;
-                self.load_misc_config(hyprctl).await?;
+                let mut sections_loaded = 0;
+                if self.load_general_config(hyprctl).await.is_ok() { sections_loaded += 1; }
+                if self.load_input_config(hyprctl).await.is_ok() { sections_loaded += 1; }
+                if self.load_decoration_config(hyprctl).await.is_ok() { sections_loaded += 1; }
+                if self.load_animations_config(hyprctl).await.is_ok() { sections_loaded += 1; }
+                if self.load_gestures_config(hyprctl).await.is_ok() { sections_loaded += 1; }
+                if self.load_misc_config(hyprctl).await.is_ok() { sections_loaded += 1; }
+                sections_loaded > 0
+            }
+        };
+
+        // Try to load keybinds, window rules, and layer rules from hyprctl
+        let binds_success = self.load_binds_config(hyprctl).await.is_ok();
+        let window_rules_success = self.load_window_rules_config(hyprctl).await.is_ok();
+        let layer_rules_success = self.load_layer_rules_config(hyprctl).await.is_ok();
+        
+        // If hyprctl failed for rules, try to load from config file
+        if !binds_success || !window_rules_success || !layer_rules_success {
+            if let Err(e) = self.load_from_config_file().await {
+                eprintln!("Warning: Failed to load from config file: {}", e);
             }
         }
+        
+        Ok(())
+    }
 
-        // These need special hyprctl commands - always load them
-        self.load_binds_config(hyprctl).await?;
-        self.load_window_rules_config(hyprctl).await?;
-        self.load_layer_rules_config(hyprctl).await?;
+    async fn load_from_config_file(&mut self) -> Result<(), anyhow::Error> {
+        let config = crate::config::Config::load().await?;
+        let hyprland_config = config.parse_hyprland_config().await?;
+        
+        // Load keybinds from config file
+        if !hyprland_config.keybinds.is_empty() {
+            let mut bind_items = Vec::new();
+            
+            for (i, keybind) in hyprland_config.keybinds.iter().enumerate() {
+                let key = format!("bind_{}", i);
+                let display_value = format!("{} {} → {} {}",
+                    keybind.modifiers,
+                    keybind.key,
+                    keybind.dispatcher,
+                    if keybind.args.is_empty() { "".to_string() } else { format!("[{}]", keybind.args) }
+                );
+                
+                bind_items.push(crate::ui::ConfigItem {
+                    key: key.clone(),
+                    value: display_value,
+                    description: format!("Keybind: {} {} -> {}", 
+                        keybind.modifiers,
+                        keybind.key,
+                        keybind.dispatcher
+                    ),
+                    data_type: crate::ui::ConfigDataType::String,
+                    suggestions: self.get_keybind_suggestions(&keybind.dispatcher),
+                });
+            }
+            
+            if !bind_items.is_empty() {
+                self.config_items.insert(crate::app::FocusedPanel::Binds, bind_items);
+            }
+        }
+        
+        // Load window rules from config file
+        if !hyprland_config.window_rules.is_empty() {
+            let mut rule_items = Vec::new();
+            
+            for (i, rule) in hyprland_config.window_rules.iter().enumerate() {
+                let key = format!("window_rule_{}", i);
+                
+                rule_items.push(crate::ui::ConfigItem {
+                    key: key.clone(),
+                    value: rule.clone(),
+                    description: format!("Window rule: {}", rule),
+                    data_type: crate::ui::ConfigDataType::String,
+                    suggestions: self.get_window_rule_suggestions(),
+                });
+            }
+            
+            if !rule_items.is_empty() {
+                self.config_items.insert(crate::app::FocusedPanel::WindowRules, rule_items);
+            }
+        }
+        
+        // Load layer rules from config file
+        if !hyprland_config.layer_rules.is_empty() || !hyprland_config.workspace_rules.is_empty() {
+            let mut rule_items = Vec::new();
+            
+            // Add layer rules
+            for (i, rule) in hyprland_config.layer_rules.iter().enumerate() {
+                let key = format!("layer_rule_{}", i);
+                
+                rule_items.push(crate::ui::ConfigItem {
+                    key: key.clone(),
+                    value: rule.clone(),
+                    description: format!("Layer rule: {}", rule),
+                    data_type: crate::ui::ConfigDataType::String,
+                    suggestions: self.get_layer_rule_suggestions(),
+                });
+            }
+            
+            // Add workspace rules
+            for (i, rule) in hyprland_config.workspace_rules.iter().enumerate() {
+                let key = format!("workspace_rule_{}", i);
+                
+                rule_items.push(crate::ui::ConfigItem {
+                    key: key.clone(),
+                    value: rule.clone(),
+                    description: format!("Workspace rule: {}", rule),
+                    data_type: crate::ui::ConfigDataType::String,
+                    suggestions: self.get_workspace_rule_suggestions(),
+                });
+            }
+            
+            if !rule_items.is_empty() {
+                self.config_items.insert(crate::app::FocusedPanel::LayerRules, rule_items);
+            }
+        }
         
         Ok(())
     }

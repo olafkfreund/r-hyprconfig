@@ -163,6 +163,10 @@ impl HyprCtl {
         Ok(hyprctl)
     }
 
+    pub fn new_disconnected() -> Self {
+        Self { socket_path: None }
+    }
+
     async fn detect_socket(&mut self) -> Result<()> {
         // Try to get Hyprland instance signature
         let output = AsyncCommand::new("hyprctl")
@@ -172,12 +176,18 @@ impl HyprCtl {
             .await;
 
         match output {
-            Ok(_) => {
-                // hyprctl is available and working
-                Ok(())
+            Ok(output) => {
+                if output.status.success() {
+                    // hyprctl is available and working
+                    Ok(())
+                } else {
+                    eprintln!("Warning: hyprctl available but Hyprland not running");
+                    Ok(()) // Don't fail, just warn
+                }
             }
             Err(e) => {
-                anyhow::bail!("Hyprland is not running or hyprctl is not available: {}", e);
+                eprintln!("Warning: Hyprland is not running or hyprctl is not available: {}", e);
+                Ok(()) // Don't fail, just warn - we can use config file fallback
             }
         }
     }

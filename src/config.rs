@@ -317,4 +317,154 @@ impl Config {
     pub fn set_nixos_mode(&mut self, enabled: bool) {
         self.nixos_mode = enabled;
     }
+
+    pub async fn parse_hyprland_config(&self) -> Result<HyprlandConfigFile> {
+        let content = async_fs::read_to_string(&self.hyprland_config_path)
+            .await
+            .context("Failed to read Hyprland config file")?;
+        
+        Ok(HyprlandConfigFile::parse(&content)?)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct HyprlandConfigFile {
+    pub keybinds: Vec<ParsedKeybind>,
+    pub window_rules: Vec<String>,
+    pub layer_rules: Vec<String>,
+    pub workspace_rules: Vec<String>,
+    pub options: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ParsedKeybind {
+    pub bind_type: String,  // bind, bindm, binde, etc.
+    pub modifiers: String,
+    pub key: String,
+    pub dispatcher: String,
+    pub args: String,
+    pub original_line: String,
+}
+
+impl HyprlandConfigFile {
+    pub fn parse(content: &str) -> Result<Self> {
+        let mut keybinds = Vec::new();
+        let mut window_rules = Vec::new();
+        let mut layer_rules = Vec::new();
+        let mut workspace_rules = Vec::new();
+        let mut options = HashMap::new();
+        
+        for line in content.lines() {
+            let line = line.trim();
+            
+            // Skip empty lines and comments
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            
+            // Parse keybinds
+            if line.starts_with("bind") {
+                if let Some(keybind) = Self::parse_keybind_line(line) {
+                    keybinds.push(keybind);
+                }
+            }
+            // Parse window rules
+            else if line.starts_with("windowrule") {
+                window_rules.push(line.to_string());
+            }
+            // Parse layer rules
+            else if line.starts_with("layerrule") {
+                layer_rules.push(line.to_string());
+            }
+            // Parse blur layer rules (legacy format)
+            else if line.starts_with("blurls") {
+                // Convert blurls to layerrule format
+                if let Some(layer_name) = line.strip_prefix("blurls=") {
+                    layer_rules.push(format!("layerrule = blur, {}", layer_name));
+                }
+            }
+            // Parse workspace rules
+            else if line.starts_with("workspace") {
+                workspace_rules.push(line.to_string());
+            }
+            // Parse configuration options in sections
+            else if line.contains('=') && !line.contains(' ') {
+                // Simple key=value pairs
+                if let Some((key, value)) = line.split_once('=') {
+                    options.insert(key.to_string(), value.to_string());
+                }
+            }
+        }
+        
+        Ok(Self {
+            keybinds,
+            window_rules,
+            layer_rules,
+            workspace_rules,
+            options,
+        })
+    }
+    
+    fn parse_keybind_line(line: &str) -> Option<ParsedKeybind> {
+        // Parse different bind formats:
+        // bind = SUPER, N, exec, swaync-client -t -sw
+        // bindm = $mainMod, mouse:272, movewindow
+        // binde = $mainMod, l, resizeactive, 30 0
+        
+        let parts: Vec<&str> = line.splitn(2, '=').collect();
+        if parts.len() != 2 {
+            return None;
+        }
+        
+        let bind_type = parts[0].trim().to_string();
+        let bind_content = parts[1].trim();
+        
+        // Split by commas, but be careful about commas in arguments
+        let mut bind_parts = Vec::new();
+        let mut current_part = String::new();
+        let mut paren_depth = 0;
+        
+        for ch in bind_content.chars() {
+            match ch {
+                ',' if paren_depth == 0 => {
+                    bind_parts.push(current_part.trim().to_string());
+                    current_part.clear();
+                }
+                '(' | '[' => {
+                    paren_depth += 1;
+                    current_part.push(ch);
+                }
+                ')' | ']' => {
+                    paren_depth -= 1;
+                    current_part.push(ch);
+                }
+                _ => current_part.push(ch),
+            }
+        }
+        if !current_part.trim().is_empty() {
+            bind_parts.push(current_part.trim().to_string());
+        }
+        
+        if bind_parts.len() >= 3 {
+            let modifiers = bind_parts[0].clone();
+            let key = bind_parts[1].clone();
+            let dispatcher = bind_parts[2].clone();
+            let args = if bind_parts.len() > 3 {
+                bind_parts[3..].join(", ")
+            } else {
+                String::new()
+            };
+            
+            Some(ParsedKeybind {
+                bind_type,
+                modifiers,
+                key,
+                dispatcher,
+                args,
+                original_line: line.to_string(),
+            })
+        } else {
+            None
+        }
+    }
 }
