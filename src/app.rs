@@ -93,7 +93,13 @@ impl App {
     pub async fn new(debug: bool) -> Result<Self> {
         let config = Config::load().await?;
         let hyprctl = HyprCtl::new().await?;
-        let ui = UI::new();
+        let mut ui = UI::new();
+        
+        // Load current configuration from hyprctl
+        if let Err(e) = ui.load_current_config(&hyprctl).await {
+            eprintln!("Warning: Failed to load current Hyprland configuration: {}", e);
+            eprintln!("Using default values. Make sure Hyprland is running.");
+        }
 
         Ok(Self {
             state: AppState::Running,
@@ -254,9 +260,15 @@ impl App {
             EditMode::Text { current_value, cursor_pos } => {
                 match key {
                     KeyCode::Enter => {
-                        self.ui.apply_edit().await?;
-                        self.ui.show_popup = true;
-                        self.ui.popup_message = "Value updated successfully!".to_string();
+                        match self.ui.apply_edit_with_hyprctl(&self.hyprctl).await {
+                            Ok(()) => {
+                                self.ui.show_popup = true;
+                                self.ui.popup_message = "Value updated successfully!".to_string();
+                            }
+                            Err(_) => {
+                                // Error message already set in apply_edit_with_hyprctl
+                            }
+                        }
                     }
                     KeyCode::Esc => {
                         self.ui.cancel_edit();
@@ -293,9 +305,15 @@ impl App {
             EditMode::Boolean { current_value } => {
                 match key {
                     KeyCode::Enter => {
-                        self.ui.apply_edit().await?;
-                        self.ui.show_popup = true;
-                        self.ui.popup_message = "Value updated successfully!".to_string();
+                        match self.ui.apply_edit_with_hyprctl(&self.hyprctl).await {
+                            Ok(()) => {
+                                self.ui.show_popup = true;
+                                self.ui.popup_message = "Value updated successfully!".to_string();
+                            }
+                            Err(_) => {
+                                // Error message already set in apply_edit_with_hyprctl
+                            }
+                        }
                     }
                     KeyCode::Esc => {
                         self.ui.cancel_edit();
@@ -309,9 +327,15 @@ impl App {
             EditMode::Select { options, selected } => {
                 match key {
                     KeyCode::Enter => {
-                        self.ui.apply_edit().await?;
-                        self.ui.show_popup = true;
-                        self.ui.popup_message = "Value updated successfully!".to_string();
+                        match self.ui.apply_edit_with_hyprctl(&self.hyprctl).await {
+                            Ok(()) => {
+                                self.ui.show_popup = true;
+                                self.ui.popup_message = "Value updated successfully!".to_string();
+                            }
+                            Err(_) => {
+                                // Error message already set in apply_edit_with_hyprctl
+                            }
+                        }
                     }
                     KeyCode::Esc => {
                         self.ui.cancel_edit();
@@ -336,9 +360,15 @@ impl App {
             EditMode::Slider { current_value, min, max, step } => {
                 match key {
                     KeyCode::Enter => {
-                        self.ui.apply_edit().await?;
-                        self.ui.show_popup = true;
-                        self.ui.popup_message = "Value updated successfully!".to_string();
+                        match self.ui.apply_edit_with_hyprctl(&self.hyprctl).await {
+                            Ok(()) => {
+                                self.ui.show_popup = true;
+                                self.ui.popup_message = "Value updated successfully!".to_string();
+                            }
+                            Err(_) => {
+                                // Error message already set in apply_edit_with_hyprctl
+                            }
+                        }
                     }
                     KeyCode::Esc => {
                         self.ui.cancel_edit();
@@ -372,6 +402,12 @@ impl App {
 
     async fn reload_config(&mut self) -> Result<()> {
         self.config = Config::load().await?;
+        
+        // Also reload current configuration from hyprctl
+        if let Err(e) = self.ui.load_current_config(&self.hyprctl).await {
+            eprintln!("Warning: Failed to reload Hyprland configuration: {}", e);
+        }
+        
         Ok(())
     }
 

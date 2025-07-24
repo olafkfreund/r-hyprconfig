@@ -100,6 +100,12 @@ impl UI {
     }
 
     fn initialize_config_items(&mut self) {
+        // Initialize with default/placeholder values
+        // These will be updated with real values from hyprctl in load_current_config
+        self.initialize_default_config_items();
+    }
+
+    fn initialize_default_config_items(&mut self) {
         
         // General configuration items
         let general_items = vec![
@@ -485,6 +491,219 @@ impl UI {
         self.config_items.insert(FocusedPanel::WindowRules, window_rules_items);
         self.config_items.insert(FocusedPanel::LayerRules, layer_rules_items);
         self.config_items.insert(FocusedPanel::Misc, misc_items);
+    }
+
+    pub async fn load_current_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+        // Load current configuration values from hyprctl
+        self.load_general_config(hyprctl).await?;
+        self.load_input_config(hyprctl).await?;
+        self.load_decoration_config(hyprctl).await?;
+        self.load_animations_config(hyprctl).await?;
+        self.load_gestures_config(hyprctl).await?;
+        self.load_misc_config(hyprctl).await?;
+        // Note: Binds, WindowRules, and LayerRules need different hyprctl commands
+        self.load_binds_config(hyprctl).await?;
+        self.load_window_rules_config(hyprctl).await?;
+        self.load_layer_rules_config(hyprctl).await?;
+        
+        Ok(())
+    }
+
+    async fn load_general_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+        if let Some(items) = self.config_items.get_mut(&FocusedPanel::General) {
+            for item in items.iter_mut() {
+                let hypr_key = match item.key.as_str() {
+                    "gaps_in" => "general:gaps_in",
+                    "gaps_out" => "general:gaps_out", 
+                    "border_size" => "general:border_size",
+                    "col.active_border" => "general:col.active_border",
+                    "col.inactive_border" => "general:col.inactive_border",
+                    _ => continue,
+                };
+                
+                match hyprctl.get_option(hypr_key).await {
+                    Ok(value) => {
+                        // Parse hyprctl output - it usually returns "option = value"
+                        if let Some(parsed_value) = Self::parse_hyprctl_value(&value) {
+                            item.value = parsed_value;
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Failed to get {}: {}", hypr_key, e);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn load_input_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+        if let Some(items) = self.config_items.get_mut(&FocusedPanel::Input) {
+            for item in items.iter_mut() {
+                let hypr_key = match item.key.as_str() {
+                    "kb_layout" => "input:kb_layout",
+                    "follow_mouse" => "input:follow_mouse",
+                    "sensitivity" => "input:sensitivity",
+                    _ => continue,
+                };
+                
+                match hyprctl.get_option(hypr_key).await {
+                    Ok(value) => {
+                        if let Some(parsed_value) = Self::parse_hyprctl_value(&value) {
+                            item.value = parsed_value;
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Failed to get {}: {}", hypr_key, e);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn load_decoration_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+        if let Some(items) = self.config_items.get_mut(&FocusedPanel::Decoration) {
+            for item in items.iter_mut() {
+                let hypr_key = match item.key.as_str() {
+                    "rounding" => "decoration:rounding",
+                    "blur.enabled" => "decoration:blur:enabled",
+                    "blur.size" => "decoration:blur:size",
+                    _ => continue,
+                };
+                
+                match hyprctl.get_option(hypr_key).await {
+                    Ok(value) => {
+                        if let Some(parsed_value) = Self::parse_hyprctl_value(&value) {
+                            item.value = parsed_value;
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Failed to get {}: {}", hypr_key, e);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn load_animations_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+        if let Some(items) = self.config_items.get_mut(&FocusedPanel::Animations) {
+            for item in items.iter_mut() {
+                let hypr_key = match item.key.as_str() {
+                    "animations.enabled" => "animations:enabled",
+                    _ => continue,
+                };
+                
+                match hyprctl.get_option(hypr_key).await {
+                    Ok(value) => {
+                        if let Some(parsed_value) = Self::parse_hyprctl_value(&value) {
+                            item.value = parsed_value;
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Failed to get {}: {}", hypr_key, e);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn load_gestures_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+        if let Some(items) = self.config_items.get_mut(&FocusedPanel::Gestures) {
+            for item in items.iter_mut() {
+                let hypr_key = match item.key.as_str() {
+                    "gestures.workspace_swipe" => "gestures:workspace_swipe",
+                    "gestures.workspace_swipe_fingers" => "gestures:workspace_swipe_fingers",
+                    "gestures.workspace_swipe_distance" => "gestures:workspace_swipe_distance",
+                    "gestures.workspace_swipe_invert" => "gestures:workspace_swipe_invert",
+                    _ => continue,
+                };
+                
+                match hyprctl.get_option(hypr_key).await {
+                    Ok(value) => {
+                        if let Some(parsed_value) = Self::parse_hyprctl_value(&value) {
+                            item.value = parsed_value;
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Failed to get {}: {}", hypr_key, e);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn load_misc_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+        if let Some(items) = self.config_items.get_mut(&FocusedPanel::Misc) {
+            for item in items.iter_mut() {
+                let hypr_key = match item.key.as_str() {
+                    "misc.disable_hyprland_logo" => "misc:disable_hyprland_logo",
+                    "misc.disable_splash_rendering" => "misc:disable_splash_rendering",
+                    "misc.mouse_move_enables_dpms" => "misc:mouse_move_enables_dpms",
+                    "misc.vfr" => "misc:vfr",
+                    "misc.vrr" => "misc:vrr",
+                    _ => continue,
+                };
+                
+                match hyprctl.get_option(hypr_key).await {
+                    Ok(value) => {
+                        if let Some(parsed_value) = Self::parse_hyprctl_value(&value) {
+                            item.value = parsed_value;
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Failed to get {}: {}", hypr_key, e);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn load_binds_config(&mut self, _hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+        // TODO: Load actual keybinds using `hyprctl binds`
+        // For now, keep the default values as placeholders
+        Ok(())
+    }
+
+    async fn load_window_rules_config(&mut self, _hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+        // TODO: Load actual window rules
+        // For now, keep the default values as placeholders
+        Ok(())
+    }
+
+    async fn load_layer_rules_config(&mut self, _hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+        // TODO: Load actual layer rules
+        // For now, keep the default values as placeholders
+        Ok(())
+    }
+
+    fn parse_hyprctl_value(raw_value: &str) -> Option<String> {
+        // hyprctl usually returns output like "option = value" or just "value"
+        // Handle different formats:
+        
+        if raw_value.contains(" = ") {
+            // Format: "option = value"
+            if let Some(value_part) = raw_value.split(" = ").nth(1) {
+                return Some(value_part.trim().to_string());
+            }
+        } else if raw_value.contains(": ") {
+            // Format: "option: value"
+            if let Some(value_part) = raw_value.split(": ").nth(1) {
+                return Some(value_part.trim().to_string());
+            }
+        } else {
+            // Format: just "value"
+            let trimmed = raw_value.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+        
+        None
     }
 
     pub fn render(&mut self, f: &mut Frame, app_state: (FocusedPanel, bool)) {
@@ -1293,23 +1512,140 @@ impl UI {
                 EditMode::None => return Ok(()),
             };
 
-            // Update the configuration item
+            // Update the configuration item in UI
             if let Some(items) = self.config_items.get_mut(panel) {
                 for item in items.iter_mut() {
                     if item.key == *key {
-                        item.value = new_value;
+                        item.value = new_value.clone();
                         break;
                     }
                 }
             }
 
-            // TODO: Here we would call hyprctl to apply the change in real-time
-            // For now, we just update the UI
-            
             self.cancel_edit();
         }
         
         Ok(())
+    }
+
+    pub async fn apply_edit_with_hyprctl(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+        if let Some((panel, key)) = &self.editing_item.clone() {
+            let new_value = match &self.edit_mode {
+                EditMode::Text { current_value, .. } => current_value.clone(),
+                EditMode::Boolean { current_value } => current_value.to_string(),
+                EditMode::Select { options, selected } => {
+                    options.get(*selected).cloned().unwrap_or_default()
+                }
+                EditMode::Slider { current_value, .. } => {
+                    // Format as integer or float based on whether it has decimal places
+                    if current_value.fract() == 0.0 {
+                        (*current_value as i32).to_string()
+                    } else {
+                        format!("{:.2}", current_value)
+                    }
+                }
+                EditMode::None => return Ok(()),
+            };
+
+            // Get the hyprctl key for this configuration option
+            let hypr_key = self.get_hyprctl_key(panel, key);
+            
+            if let Some(hypr_key) = hypr_key {
+                // Apply the change via hyprctl
+                match hyprctl.set_option(&hypr_key, &new_value).await {
+                    Ok(()) => {
+                        // Successfully applied - update the UI
+                        if let Some(items) = self.config_items.get_mut(panel) {
+                            for item in items.iter_mut() {
+                                if item.key == *key {
+                                    item.value = new_value;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        // Failed to apply - show error but don't update UI
+                        self.show_popup = true;
+                        self.popup_message = format!("Failed to apply setting: {}", e);
+                        self.cancel_edit();
+                        return Err(e);
+                    }
+                }
+            } else {
+                // No hyprctl mapping - just update UI (for items like binds/rules)
+                if let Some(items) = self.config_items.get_mut(panel) {
+                    for item in items.iter_mut() {
+                        if item.key == *key {
+                            item.value = new_value;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            self.cancel_edit();
+        }
+        
+        Ok(())
+    }
+
+    fn get_hyprctl_key(&self, panel: &FocusedPanel, key: &str) -> Option<String> {
+        match panel {
+            FocusedPanel::General => {
+                match key {
+                    "gaps_in" => Some("general:gaps_in".to_string()),
+                    "gaps_out" => Some("general:gaps_out".to_string()),
+                    "border_size" => Some("general:border_size".to_string()),
+                    "col.active_border" => Some("general:col.active_border".to_string()),
+                    "col.inactive_border" => Some("general:col.inactive_border".to_string()),
+                    _ => None,
+                }
+            }
+            FocusedPanel::Input => {
+                match key {
+                    "kb_layout" => Some("input:kb_layout".to_string()),
+                    "follow_mouse" => Some("input:follow_mouse".to_string()),
+                    "sensitivity" => Some("input:sensitivity".to_string()),
+                    _ => None,
+                }
+            }
+            FocusedPanel::Decoration => {
+                match key {
+                    "rounding" => Some("decoration:rounding".to_string()),
+                    "blur.enabled" => Some("decoration:blur:enabled".to_string()),
+                    "blur.size" => Some("decoration:blur:size".to_string()),
+                    _ => None,
+                }
+            }
+            FocusedPanel::Animations => {
+                match key {
+                    "animations.enabled" => Some("animations:enabled".to_string()),
+                    _ => None,
+                }
+            }
+            FocusedPanel::Gestures => {
+                match key {
+                    "gestures.workspace_swipe" => Some("gestures:workspace_swipe".to_string()),
+                    "gestures.workspace_swipe_fingers" => Some("gestures:workspace_swipe_fingers".to_string()),
+                    "gestures.workspace_swipe_distance" => Some("gestures:workspace_swipe_distance".to_string()),
+                    "gestures.workspace_swipe_invert" => Some("gestures:workspace_swipe_invert".to_string()),
+                    _ => None,
+                }
+            }
+            FocusedPanel::Misc => {
+                match key {
+                    "misc.disable_hyprland_logo" => Some("misc:disable_hyprland_logo".to_string()),
+                    "misc.disable_splash_rendering" => Some("misc:disable_splash_rendering".to_string()),
+                    "misc.mouse_move_enables_dpms" => Some("misc:mouse_move_enables_dpms".to_string()),
+                    "misc.vfr" => Some("misc:vfr".to_string()),
+                    "misc.vrr" => Some("misc:vrr".to_string()),
+                    _ => None,
+                }
+            }
+            // Binds, WindowRules, and LayerRules need different hyprctl commands
+            _ => None,
+        }
     }
 
     pub fn cancel_edit(&mut self) {
