@@ -126,6 +126,9 @@ impl App {
         
         let mut ui = UI::new();
         
+        // Set theme from config
+        ui.set_theme(config.theme.clone());
+        
         // Load current configuration from hyprctl or config file
         if let Err(e) = ui.load_current_config(&hyprctl).await {
             eprintln!("Warning: Failed to load current configuration: {}", e);
@@ -206,6 +209,10 @@ impl App {
             return self.handle_popup_key(key).await;
         }
         
+        if self.ui.search_mode {
+            return self.handle_search_key(key).await;
+        }
+        
         if self.ui.edit_mode != crate::ui::EditMode::None {
             return self.handle_edit_key(key).await;
         }
@@ -237,6 +244,34 @@ impl App {
             }
             KeyCode::Char('s') | KeyCode::Char('S') => {
                 self.ui.show_save_dialog = true;
+            }
+            // Additional functionality to be re-implemented
+            KeyCode::Char('a') | KeyCode::Char('A') => {
+                // TODO: Add item functionality
+            }
+            KeyCode::Char('d') | KeyCode::Char('D') => {
+                // TODO: Delete item functionality  
+            }
+            KeyCode::Char('i') | KeyCode::Char('I') => {
+                // TODO: Insert/Add item functionality
+            }
+            KeyCode::Char('/') => {
+                self.ui.start_search();
+            }
+            KeyCode::Char('t') | KeyCode::Char('T') => {
+                let new_theme = self.ui.next_theme();
+                self.config.theme = new_theme;
+                // Save theme to config file
+                if let Err(e) = self.config.save().await {
+                    eprintln!("Warning: Failed to save theme to config: {}", e);
+                }
+                self.ui.show_popup = true;
+                self.ui.popup_message = format!("Theme changed to: {}", self.config.theme);
+            }
+            KeyCode::F(1) => {
+                // Show theme selection menu or help
+                self.ui.show_popup = true;
+                self.ui.popup_message = format!("Current theme: {} (Press T to cycle themes)", self.config.theme);
             }
             _ => {}
         }
@@ -542,10 +577,42 @@ impl App {
                     _ => {}
                 }
             }
+            // TODO: Re-implement AddingItem edit mode
             EditMode::None => {
                 // This shouldn't happen, but handle it gracefully
                 self.ui.cancel_edit();
             }
+        }
+        Ok(())
+    }
+
+    async fn handle_search_key(&mut self, key: KeyCode) -> Result<()> {
+        match key {
+            KeyCode::Esc => {
+                self.ui.exit_search();
+            }
+            KeyCode::Enter => {
+                self.ui.exit_search();
+            }
+            KeyCode::Char(c) => {
+                self.ui.add_search_char(c);
+            }
+            KeyCode::Backspace => {
+                self.ui.remove_search_char();
+            }
+            KeyCode::Left => {
+                self.ui.move_search_cursor_left();
+            }
+            KeyCode::Right => {
+                self.ui.move_search_cursor_right();
+            }
+            KeyCode::Home => {
+                self.ui.search_cursor = 0;
+            }
+            KeyCode::End => {
+                self.ui.search_cursor = self.ui.search_query.len();
+            }
+            _ => {}
         }
         Ok(())
     }
@@ -579,6 +646,8 @@ impl App {
     }
 
     async fn save_config(&mut self) -> Result<()> {
+        // TODO: Re-implement validation before saving
+        
         // Save the application's own config
         self.config.save().await?;
         

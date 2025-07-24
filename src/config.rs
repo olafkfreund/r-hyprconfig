@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::fs as async_fs;
+use crate::theme::ColorScheme;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -11,6 +12,8 @@ pub struct Config {
     pub auto_save: bool,
     pub nixos_mode: bool,
     pub current_values: HashMap<String, String>,
+    #[serde(default)]
+    pub theme: ColorScheme,
 }
 
 impl Default for Config {
@@ -21,6 +24,7 @@ impl Default for Config {
             auto_save: false,
             nixos_mode: Self::detect_nixos(),
             current_values: HashMap::new(),
+            theme: ColorScheme::default(),
         }
     }
 }

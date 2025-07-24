@@ -5,6 +5,7 @@ mod app;
 mod hyprctl;
 mod ui;
 mod config;
+mod theme;
 
 use app::App;
 

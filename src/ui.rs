@@ -94,6 +94,15 @@ pub struct UI {
     pub popup_message: String,
     pub show_save_dialog: bool,
     pub show_reload_dialog: bool,
+    
+    // Search functionality
+    pub search_mode: bool,
+    pub search_query: String,
+    pub search_cursor: usize,
+    
+    // Theme
+    pub theme: crate::theme::Theme,
+    
     pub config_items: std::collections::HashMap<FocusedPanel, Vec<ConfigItem>>,
 }
 
@@ -118,6 +127,15 @@ impl UI {
             popup_message: String::new(),
             show_save_dialog: false,
             show_reload_dialog: false,
+            
+            // Search functionality
+            search_mode: false,
+            search_query: String::new(),
+            search_cursor: 0,
+            
+            // Theme
+            theme: crate::theme::Theme::default(),
+            
             config_items: std::collections::HashMap::new(),
         };
 
@@ -1595,28 +1613,27 @@ impl UI {
             "🎨 R-Hyprconfig - Hyprland Configuration Manager ⚡"
         };
 
-        // Create gradient-like effect with different colors
+        // Create gradient-like effect with theme colors
         let title_spans = vec![
-            Span::styled("🎨 R-Hyprconfig", Style::default().fg(Color::Rgb(0, 255, 255)).bold()),
+            Span::styled("R-Hyprconfig", self.theme.header_style().bold()),
             Span::raw(" - "),
-            Span::styled("Hyprland Configuration Manager", Style::default().fg(Color::Rgb(255, 165, 0)).bold()),
-            Span::raw(" ⚡"),
+            Span::styled("Hyprland Configuration Manager", Style::default().fg(self.theme.accent_secondary).bold()),
         ];
 
         let header_content = vec![
             Line::from(title_spans),
             Line::from(vec![
-                Span::styled("Press ", Style::default().fg(Color::Gray)),
-                Span::styled("Enter", Style::default().fg(Color::Yellow).bold()),
-                Span::styled(" to edit • ", Style::default().fg(Color::Gray)),
-                Span::styled("Tab", Style::default().fg(Color::Yellow).bold()),
-                Span::styled(" to switch tabs • ", Style::default().fg(Color::Gray)),
-                Span::styled("↑↓", Style::default().fg(Color::Cyan).bold()),
-                Span::styled(" to navigate • ", Style::default().fg(Color::Gray)),
-                Span::styled("S", Style::default().fg(Color::Green).bold()),
-                Span::styled(" to save • ", Style::default().fg(Color::Gray)),
-                Span::styled("R", Style::default().fg(Color::Blue).bold()),
-                Span::styled(" to reload", Style::default().fg(Color::Gray)),
+                Span::styled("Press ", Style::default().fg(self.theme.fg_muted)),
+                Span::styled("Enter", self.theme.warning_style().bold()),
+                Span::styled(" to edit • ", Style::default().fg(self.theme.fg_muted)),
+                Span::styled("Tab", self.theme.warning_style().bold()),
+                Span::styled(" to switch tabs • ", Style::default().fg(self.theme.fg_muted)),
+                Span::styled("↑↓", self.theme.info_style().bold()),
+                Span::styled(" to navigate • ", Style::default().fg(self.theme.fg_muted)),
+                Span::styled("S", self.theme.success_style().bold()),
+                Span::styled(" to save • ", Style::default().fg(self.theme.fg_muted)),
+                Span::styled("R", self.theme.info_style().bold()),
+                Span::styled(" to reload", Style::default().fg(self.theme.fg_muted)),
             ]),
         ];
 
@@ -1625,10 +1642,10 @@ impl UI {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Rgb(100, 200, 255)))
+                    .border_style(self.theme.border_style(true))
                     .border_type(BorderType::Double)
                     .title(" Hyprland TUI ")
-                    .title_style(Style::default().fg(Color::Cyan).bold())
+                    .title_style(self.theme.header_style().bold())
             );
 
         f.render_widget(header, area);
@@ -1649,22 +1666,18 @@ impl UI {
 
         let tab_spans: Vec<Span> = tabs.iter().enumerate().map(|(i, &panel)| {
             let tab_name = match panel {
-                FocusedPanel::General => "🏠 General",
-                FocusedPanel::Input => "⌨️ Input",
-                FocusedPanel::Decoration => "✨ Decoration",
-                FocusedPanel::Animations => "🎬 Animations",
-                FocusedPanel::Gestures => "👆 Gestures",
-                FocusedPanel::Binds => "🔗 Binds",
-                FocusedPanel::WindowRules => "📏 Win Rules",
-                FocusedPanel::LayerRules => "📐 Layer Rules",
-                FocusedPanel::Misc => "⚙️ Misc",
+                FocusedPanel::General => "General",
+                FocusedPanel::Input => "Input",
+                FocusedPanel::Decoration => "Decoration",
+                FocusedPanel::Animations => "Animations",
+                FocusedPanel::Gestures => "Gestures",
+                FocusedPanel::Binds => "Binds",
+                FocusedPanel::WindowRules => "Win Rules",
+                FocusedPanel::LayerRules => "Layer Rules",
+                FocusedPanel::Misc => "Misc",
             };
 
-            let style = if panel == self.current_tab {
-                Style::default().fg(Color::Yellow).bg(Color::DarkGray).bold()
-            } else {
-                Style::default().fg(Color::Gray)
-            };
+            let style = self.theme.tab_style(panel == self.current_tab);
 
             let mut result = vec![Span::styled(tab_name, style)];
             if i < tabs.len() - 1 {
@@ -1678,26 +1691,40 @@ impl UI {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Cyan))
+                    .border_style(self.theme.border_style(false))
             );
 
         f.render_widget(tabs_paragraph, area);
     }
 
     fn render_current_tab(&mut self, f: &mut Frame, area: Rect) {
-        // Get config items for current tab
+        // Split area to make room for search bar
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(if self.search_mode || !self.search_query.is_empty() {
+                vec![
+                    Constraint::Length(3), // Search bar
+                    Constraint::Min(0),    // Config list
+                ]
+            } else {
+                vec![
+                    Constraint::Min(0),    // Full area for list
+                ]
+            })
+            .split(area);
+
+        // Render search bar if in search mode or has query
+        if self.search_mode || !self.search_query.is_empty() {
+            self.render_search_bar(f, chunks[0]);
+        }
+
+        // Get config items for current tab and filter them
         let config_items = self.config_items.get(&self.current_tab).cloned().unwrap_or_default();
+        let filtered_items = self.filter_items(&config_items);
         
         // Create list items with enhanced formatting
-        let items: Vec<ListItem> = config_items.iter().map(|item| {
-            let value_style = match &item.data_type {
-                ConfigDataType::Integer { .. } => Style::default().fg(Color::Rgb(100, 255, 100)), // Light green
-                ConfigDataType::Float { .. } => Style::default().fg(Color::Rgb(100, 255, 255)), // Light cyan  
-                ConfigDataType::Boolean => Style::default().fg(Color::Rgb(255, 255, 100)), // Light yellow
-                ConfigDataType::Color => Style::default().fg(Color::Rgb(255, 150, 255)), // Light magenta
-                ConfigDataType::String => Style::default().fg(Color::White),
-                ConfigDataType::Keyword { .. } => Style::default().fg(Color::Rgb(255, 200, 100)), // Light orange
-            };
+        let items: Vec<ListItem> = filtered_items.iter().map(|item| {
+            let value_style = self.theme.data_type_style(&item.data_type);
 
             let key_display = if item.key.len() > 25 {
                 format!("{}...", &item.key[..22])
@@ -1755,8 +1782,16 @@ impl UI {
             )
             .highlight_symbol("▶ ");
 
+        // Determine list area before getting mutable reference
+        let has_search = self.search_mode || !self.search_query.is_empty();
+        let list_area = if has_search {
+            chunks[1] // Use second chunk when search bar is present
+        } else {
+            chunks[0] // Use first (and only) chunk when no search bar
+        };
+        
         let current_list_state = self.get_current_list_state();
-        f.render_stateful_widget(list, area, current_list_state);
+        f.render_stateful_widget(list, list_area, current_list_state);
     }
 
     #[allow(dead_code)]
@@ -1801,17 +1836,17 @@ impl UI {
             ListItem::new(line)
         }).collect();
 
-        // Panel title with emoji
+        // Panel title
         let title = match panel {
-            FocusedPanel::General => "🏠 General",
-            FocusedPanel::Input => "⌨️  Input", 
-            FocusedPanel::Decoration => "✨ Decoration",
-            FocusedPanel::Animations => "🎬 Animations",
-            FocusedPanel::Gestures => "👆 Gestures",
-            FocusedPanel::Binds => "🔗 Key Binds",
-            FocusedPanel::WindowRules => "📏 Window Rules",
-            FocusedPanel::LayerRules => "📐 Layer Rules",
-            FocusedPanel::Misc => "⚙️  Misc",
+            FocusedPanel::General => "General Configuration",
+            FocusedPanel::Input => "Input Configuration", 
+            FocusedPanel::Decoration => "Decoration Configuration",
+            FocusedPanel::Animations => "Animations Configuration",
+            FocusedPanel::Gestures => "Gestures Configuration",
+            FocusedPanel::Binds => "Key Binds Configuration",
+            FocusedPanel::WindowRules => "Window Rules Configuration",
+            FocusedPanel::LayerRules => "Layer Rules Configuration",
+            FocusedPanel::Misc => "Miscellaneous Configuration",
         };
 
         let mut block = Block::default()
@@ -1883,26 +1918,32 @@ impl UI {
 
     fn render_enhanced_footer(&self, f: &mut Frame, area: Rect) {
         let help_text = vec![
-            Span::styled("Tab/→", Style::default().fg(Color::Rgb(255, 215, 0)).bold()),
-            Span::styled(" Next ", Style::default().fg(Color::Gray)),
+            Span::styled("Tab/→", self.theme.warning_style().bold()),
+            Span::styled(" Next ", Style::default().fg(self.theme.fg_muted)),
             Span::raw("• "),
-            Span::styled("Shift+Tab/←", Style::default().fg(Color::Rgb(255, 215, 0)).bold()),
-            Span::styled(" Previous ", Style::default().fg(Color::Gray)),
+            Span::styled("Shift+Tab/←", self.theme.warning_style().bold()),
+            Span::styled(" Previous ", Style::default().fg(self.theme.fg_muted)),
             Span::raw("• "),
-            Span::styled("↑↓", Style::default().fg(Color::Rgb(100, 255, 100)).bold()),
-            Span::styled(" Navigate ", Style::default().fg(Color::Gray)),
+            Span::styled("↑↓", self.theme.success_style().bold()),
+            Span::styled(" Navigate ", Style::default().fg(self.theme.fg_muted)),
             Span::raw("• "),
-            Span::styled("Enter", Style::default().fg(Color::Rgb(255, 100, 255)).bold()),
-            Span::styled(" Edit ", Style::default().fg(Color::Gray)),
+            Span::styled("Enter", Style::default().fg(self.theme.accent_primary).bold()),
+            Span::styled(" Edit ", Style::default().fg(self.theme.fg_muted)),
             Span::raw("• "),
-            Span::styled("S", Style::default().fg(Color::Rgb(100, 255, 255)).bold()),
-            Span::styled(" Save ", Style::default().fg(Color::Gray)),
+            Span::styled("S", self.theme.info_style().bold()),
+            Span::styled(" Save ", Style::default().fg(self.theme.fg_muted)),
             Span::raw("• "),
-            Span::styled("R", Style::default().fg(Color::Rgb(255, 165, 0)).bold()),
-            Span::styled(" Reload ", Style::default().fg(Color::Gray)),
+            Span::styled("R", self.theme.info_style().bold()),
+            Span::styled(" Reload ", Style::default().fg(self.theme.fg_muted)),
             Span::raw("• "),
-            Span::styled("Q/Esc", Style::default().fg(Color::Rgb(255, 100, 100)).bold()),
-            Span::styled(" Quit", Style::default().fg(Color::Gray)),
+            Span::styled("/", self.theme.warning_style().bold()),
+            Span::styled(" Search ", Style::default().fg(self.theme.fg_muted)),
+            Span::raw("• "),
+            Span::styled("T", Style::default().fg(self.theme.accent_secondary).bold()),
+            Span::styled(" Theme ", Style::default().fg(self.theme.fg_muted)),
+            Span::raw("• "),
+            Span::styled("Q/Esc", self.theme.error_style().bold()),
+            Span::styled(" Quit", Style::default().fg(self.theme.fg_muted)),
         ];
 
         let footer = Paragraph::new(Line::from(help_text))
@@ -1910,10 +1951,10 @@ impl UI {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Rgb(150, 150, 200)))
+                    .border_style(self.theme.border_style(false))
                     .border_type(BorderType::Rounded)
                     .title(" Controls ")
-                    .title_style(Style::default().fg(Color::Cyan).bold()),
+                    .title_style(self.theme.info_style().bold()),
             );
 
         f.render_widget(footer, area);
@@ -2787,5 +2828,123 @@ impl UI {
     pub fn cancel_edit(&mut self) {
         self.edit_mode = EditMode::None;
         self.editing_item = None;
+    }
+
+    // Search functionality methods
+    pub fn start_search(&mut self) {
+        self.search_mode = true;
+        self.search_query.clear();
+        self.search_cursor = 0;
+    }
+
+    pub fn exit_search(&mut self) {
+        self.search_mode = false;
+        self.search_query.clear();
+        self.search_cursor = 0;
+    }
+
+    pub fn add_search_char(&mut self, c: char) {
+        if self.search_mode {
+            self.search_query.insert(self.search_cursor, c);
+            self.search_cursor += 1;
+        }
+    }
+
+    pub fn remove_search_char(&mut self) {
+        if self.search_mode && self.search_cursor > 0 {
+            self.search_cursor -= 1;
+            self.search_query.remove(self.search_cursor);
+        }
+    }
+
+    pub fn move_search_cursor_left(&mut self) {
+        if self.search_cursor > 0 {
+            self.search_cursor -= 1;
+        }
+    }
+
+    pub fn move_search_cursor_right(&mut self) {
+        if self.search_cursor < self.search_query.len() {
+            self.search_cursor += 1;
+        }
+    }
+
+    pub fn filter_items(&self, items: &[ConfigItem]) -> Vec<ConfigItem> {
+        if self.search_query.is_empty() {
+            return items.to_vec();
+        }
+
+        let query = self.search_query.to_lowercase();
+        items.iter()
+            .filter(|item| {
+                item.key.to_lowercase().contains(&query) ||
+                item.value.to_lowercase().contains(&query) ||
+                item.description.to_lowercase().contains(&query)
+            })
+            .cloned()
+            .collect()
+    }
+
+    fn render_search_bar(&self, f: &mut Frame, area: Rect) {
+        let search_text = if self.search_mode {
+            format!("Search: {}", self.search_query)
+        } else {
+            format!("Search: {} (Press / to edit)", self.search_query)
+        };
+
+        let search_style = self.theme.search_style(self.search_mode);
+
+        let search_paragraph = Paragraph::new(search_text)
+            .style(search_style)
+            .alignment(Alignment::Left)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(if self.search_mode {
+                        self.theme.border_style(true)
+                    } else {
+                        self.theme.border_style(false)
+                    })
+                    .border_type(BorderType::Rounded)
+                    .title(if !self.search_query.is_empty() {
+                        format!(" Search (showing {} results) ", 
+                               self.filter_items(&self.config_items.get(&self.current_tab).cloned().unwrap_or_default()).len())
+                    } else {
+                        " Search ".to_string()
+                    })
+                    .title_style(search_style.bold()),
+            );
+
+        f.render_widget(search_paragraph, area);
+
+        // Render cursor if in search mode
+        if self.search_mode {
+            let cursor_x = area.x + 1 + "Search: ".len() as u16 + self.search_cursor as u16;
+            let cursor_y = area.y + 1;
+            if cursor_x < area.x + area.width - 1 {
+                f.set_cursor_position((cursor_x, cursor_y));
+            }
+        }
+    }
+
+    // Theme management methods
+    pub fn set_theme(&mut self, scheme: crate::theme::ColorScheme) {
+        self.theme = crate::theme::Theme::from_scheme(scheme);
+    }
+
+    pub fn next_theme(&mut self) -> crate::theme::ColorScheme {
+        let next_scheme = self.theme.scheme.next();
+        self.theme = crate::theme::Theme::from_scheme(next_scheme.clone());
+        next_scheme
+    }
+
+    pub fn previous_theme(&mut self) -> crate::theme::ColorScheme {
+        let prev_scheme = self.theme.scheme.previous();
+        self.theme = crate::theme::Theme::from_scheme(prev_scheme.clone());
+        prev_scheme
+    }
+
+    pub fn get_current_theme(&self) -> &crate::theme::ColorScheme {
+        &self.theme.scheme
     }
 }
