@@ -18,6 +18,40 @@ pub enum EditMode {
     Slider { current_value: f32, min: f32, max: f32, step: f32 },
     Select { options: Vec<String>, selected: usize },
     Boolean { current_value: bool },
+    Keybind { 
+        modifiers: Vec<String>,
+        key: String,
+        dispatcher: String,
+        args: String,
+        editing_field: KeybindField,
+    },
+    Rule {
+        rule_type: RuleType,
+        pattern: String,
+        action: String,
+        editing_field: RuleField,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum KeybindField {
+    Modifiers,
+    Key,
+    Dispatcher,
+    Args,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RuleType {
+    Window,
+    Layer,
+    Workspace,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RuleField {
+    Pattern,
+    Action,
 }
 
 #[derive(Debug, Clone)]
@@ -50,6 +84,9 @@ pub struct UI {
     pub layer_rules_list_state: ListState,
     pub misc_list_state: ListState,
     
+    // Tab navigation state
+    pub current_tab: FocusedPanel,
+    
     // New editing state
     pub edit_mode: EditMode,
     pub editing_item: Option<(FocusedPanel, String)>,
@@ -72,6 +109,8 @@ impl UI {
             window_rules_list_state: ListState::default(),
             layer_rules_list_state: ListState::default(),
             misc_list_state: ListState::default(),
+            
+            current_tab: FocusedPanel::General,
             
             edit_mode: EditMode::None,
             editing_item: None,
@@ -97,6 +136,28 @@ impl UI {
         ui.initialize_config_items();
 
         ui
+    }
+
+    pub fn next_tab(&mut self) {
+        self.current_tab = self.current_tab.next();
+    }
+
+    pub fn previous_tab(&mut self) {
+        self.current_tab = self.current_tab.previous();
+    }
+
+    pub fn get_current_list_state(&mut self) -> &mut ListState {
+        match self.current_tab {
+            FocusedPanel::General => &mut self.general_list_state,
+            FocusedPanel::Input => &mut self.input_list_state,
+            FocusedPanel::Decoration => &mut self.decoration_list_state,
+            FocusedPanel::Animations => &mut self.animations_list_state,
+            FocusedPanel::Gestures => &mut self.gestures_list_state,
+            FocusedPanel::Binds => &mut self.binds_list_state,
+            FocusedPanel::WindowRules => &mut self.window_rules_list_state,
+            FocusedPanel::LayerRules => &mut self.layer_rules_list_state,
+            FocusedPanel::Misc => &mut self.misc_list_state,
+        }
     }
 
     fn initialize_config_items(&mut self) {
@@ -494,19 +555,286 @@ impl UI {
     }
 
     pub async fn load_current_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
-        // Load current configuration values from hyprctl
-        self.load_general_config(hyprctl).await?;
-        self.load_input_config(hyprctl).await?;
-        self.load_decoration_config(hyprctl).await?;
-        self.load_animations_config(hyprctl).await?;
-        self.load_gestures_config(hyprctl).await?;
-        self.load_misc_config(hyprctl).await?;
-        // Note: Binds, WindowRules, and LayerRules need different hyprctl commands
+        // Load ALL configuration options from hyprctl  
+        match hyprctl.get_all_options().await {
+            Ok(all_options) => {
+                self.populate_config_from_options(all_options);
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to load all options from hyprctl: {}", e);
+                // Fall back to loading individual sections
+                self.load_general_config(hyprctl).await?;
+                self.load_input_config(hyprctl).await?;
+                self.load_decoration_config(hyprctl).await?;
+                self.load_animations_config(hyprctl).await?;
+                self.load_gestures_config(hyprctl).await?;
+                self.load_misc_config(hyprctl).await?;
+            }
+        }
+
+        // These need special hyprctl commands - always load them
         self.load_binds_config(hyprctl).await?;
         self.load_window_rules_config(hyprctl).await?;
         self.load_layer_rules_config(hyprctl).await?;
         
         Ok(())
+    }
+
+    fn populate_config_from_options(&mut self, options: std::collections::HashMap<String, String>) {
+        // Clear existing items and populate from actual hyprctl data
+        self.config_items.clear();
+        
+        // Initialize empty vectors for each panel
+        let mut general_items = Vec::new();
+        let mut input_items = Vec::new();
+        let mut decoration_items = Vec::new();
+        let mut animation_items = Vec::new();
+        let mut gesture_items = Vec::new();
+        let mut misc_items = Vec::new();
+
+        // Process all options and categorize them
+        for (key, value) in options {
+            let parsed_value = Self::parse_hyprctl_value(&value).unwrap_or(value.clone());
+            
+            let config_item = ConfigItem {
+                key: key.clone(),
+                value: parsed_value,
+                description: self.get_option_description(&key),
+                data_type: self.infer_data_type(&key, &value),
+                suggestions: self.get_option_suggestions(&key),
+            };
+
+            // Categorize based on option prefix
+            if key.starts_with("general:") {
+                general_items.push(config_item);
+            } else if key.starts_with("input:") {
+                input_items.push(config_item);
+            } else if key.starts_with("decoration:") {
+                decoration_items.push(config_item);
+            } else if key.starts_with("animations:") {
+                animation_items.push(config_item);
+            } else if key.starts_with("gestures:") {
+                gesture_items.push(config_item);
+            } else if key.starts_with("misc:") {
+                misc_items.push(config_item);
+            }
+        }
+
+        // Sort items by key name for consistent display
+        general_items.sort_by(|a, b| a.key.cmp(&b.key));
+        input_items.sort_by(|a, b| a.key.cmp(&b.key));
+        decoration_items.sort_by(|a, b| a.key.cmp(&b.key));
+        animation_items.sort_by(|a, b| a.key.cmp(&b.key));
+        gesture_items.sort_by(|a, b| a.key.cmp(&b.key));
+        misc_items.sort_by(|a, b| a.key.cmp(&b.key));
+
+        // Insert into config_items
+        if !general_items.is_empty() {
+            self.config_items.insert(FocusedPanel::General, general_items);
+        }
+        if !input_items.is_empty() {
+            self.config_items.insert(FocusedPanel::Input, input_items);
+        }
+        if !decoration_items.is_empty() {
+            self.config_items.insert(FocusedPanel::Decoration, decoration_items);
+        }
+        if !animation_items.is_empty() {
+            self.config_items.insert(FocusedPanel::Animations, animation_items);
+        }
+        if !gesture_items.is_empty() {
+            self.config_items.insert(FocusedPanel::Gestures, gesture_items);
+        }
+        if !misc_items.is_empty() {
+            self.config_items.insert(FocusedPanel::Misc, misc_items);
+        }
+    }
+
+    fn get_option_description(&self, key: &str) -> String {
+        match key {
+            // General options
+            "general:gaps_in" => "Inner gaps between windows".to_string(),
+            "general:gaps_out" => "Outer gaps between windows and monitor edges".to_string(),
+            "general:border_size" => "Window border thickness".to_string(),
+            "general:col.active_border" => "Color of active window border".to_string(),
+            "general:col.inactive_border" => "Color of inactive window border".to_string(),
+            "general:resize_on_border" => "Enable resizing by dragging border".to_string(),
+            "general:extend_border_grab_area" => "Extended border grab area".to_string(),
+            "general:hover_icon_on_border" => "Show resize cursor on border hover".to_string(),
+            
+            // Input options
+            "input:kb_layout" => "Keyboard layout".to_string(),
+            "input:kb_variant" => "Keyboard layout variant".to_string(),
+            "input:kb_model" => "Keyboard model".to_string(),
+            "input:kb_options" => "Keyboard options".to_string(),
+            "input:kb_rules" => "Keyboard rules".to_string(),
+            "input:follow_mouse" => "Mouse focus behavior".to_string(),
+            "input:mouse_refocus" => "Refocus on mouse move".to_string(),
+            "input:sensitivity" => "Mouse sensitivity".to_string(),
+            "input:accel_profile" => "Mouse acceleration profile".to_string(),
+            "input:natural_scroll" => "Natural scrolling".to_string(),
+            
+            // Decoration options
+            "decoration:rounding" => "Window corner rounding".to_string(),
+            "decoration:blur:enabled" => "Enable blur effects".to_string(),
+            "decoration:blur:size" => "Blur effect size".to_string(),
+            "decoration:blur:passes" => "Blur effect passes".to_string(),
+            "decoration:drop_shadow" => "Enable drop shadows".to_string(),
+            "decoration:shadow_range" => "Shadow range".to_string(),
+            "decoration:shadow_render_power" => "Shadow render power".to_string(),
+            "decoration:col.shadow" => "Shadow color".to_string(),
+            "decoration:dim_inactive" => "Dim inactive windows".to_string(),
+            "decoration:dim_strength" => "Dim strength".to_string(),
+            
+            // Animation options
+            "animations:enabled" => "Enable animations".to_string(),
+            
+            // Gesture options
+            "gestures:workspace_swipe" => "Enable workspace swiping".to_string(),
+            "gestures:workspace_swipe_fingers" => "Fingers for workspace swipe".to_string(),
+            "gestures:workspace_swipe_distance" => "Swipe distance threshold".to_string(),
+            "gestures:workspace_swipe_invert" => "Invert swipe direction".to_string(),
+            "gestures:workspace_swipe_min_speed_to_force" => "Min speed to force swipe".to_string(),
+            "gestures:workspace_swipe_cancel_ratio" => "Swipe cancel ratio".to_string(),
+            "gestures:workspace_swipe_create_new" => "Create new workspace on swipe".to_string(),
+            "gestures:workspace_swipe_forever" => "Enable infinite workspace swipe".to_string(),
+            
+            // Misc options
+            "misc:disable_hyprland_logo" => "Disable Hyprland logo".to_string(),
+            "misc:disable_splash_rendering" => "Disable splash screen".to_string(),
+            "misc:mouse_move_enables_dpms" => "Mouse movement enables DPMS".to_string(),
+            "misc:key_press_enables_dpms" => "Key press enables DPMS".to_string(),
+            "misc:always_follow_on_dnd" => "Always follow on drag and drop".to_string(),
+            "misc:layers_hog_keyboard_focus" => "Layers hog keyboard focus".to_string(),
+            "misc:animate_manual_resizes" => "Animate manual resizes".to_string(),
+            "misc:animate_mouse_windowdragging" => "Animate mouse window dragging".to_string(),
+            "misc:disable_autoreload" => "Disable auto-reload".to_string(),
+            "misc:enable_swallow" => "Enable window swallowing".to_string(),
+            "misc:swallow_regex" => "Swallow regex pattern".to_string(),
+            
+            _ => format!("Configuration option: {}", key),
+        }
+    }
+
+    fn infer_data_type(&self, key: &str, value: &str) -> ConfigDataType {
+        // Infer data type based on key patterns and value content
+        match key {
+            // Color options
+            k if k.contains("col.") || k.contains("color") => ConfigDataType::Color,
+            
+            // Boolean options
+            k if k.contains("enable") || k.contains("disable") || 
+                 k.ends_with("_on_border") || k.contains("natural_scroll") ||
+                 k.contains("mouse_refocus") || k.contains("resize_on_border") => {
+                ConfigDataType::Boolean
+            }
+            
+            // Float options  
+            "input:sensitivity" | "decoration:dim_strength" | 
+            "gestures:workspace_swipe_cancel_ratio" => {
+                ConfigDataType::Float { min: Some(0.0), max: Some(10.0) }
+            }
+            
+            // Integer options with ranges
+            "general:gaps_in" | "general:gaps_out" => {
+                ConfigDataType::Integer { min: Some(0), max: Some(100) }
+            }
+            "general:border_size" => {
+                ConfigDataType::Integer { min: Some(0), max: Some(20) }
+            }
+            "decoration:rounding" => {
+                ConfigDataType::Integer { min: Some(0), max: Some(50) }
+            }
+            
+            k if k.contains("size") || k.contains("range") || k.contains("passes") ||
+                 k.contains("fingers") || k.contains("distance") => {
+                ConfigDataType::Integer { min: Some(0), max: Some(100) }
+            }
+            
+            // Try to infer from value
+            _ => {
+                let trimmed = value.trim();
+                if trimmed == "true" || trimmed == "false" || trimmed == "1" || trimmed == "0" {
+                    ConfigDataType::Boolean
+                } else if trimmed.parse::<i32>().is_ok() {
+                    ConfigDataType::Integer { min: None, max: None }
+                } else if trimmed.parse::<f32>().is_ok() {
+                    ConfigDataType::Float { min: None, max: None }
+                } else if trimmed.starts_with('#') || trimmed.starts_with("rgb") {
+                    ConfigDataType::Color
+                } else {
+                    ConfigDataType::String
+                }
+            }
+        }
+    }
+
+    fn get_option_suggestions(&self, key: &str) -> Vec<String> {
+        match key {
+            "input:follow_mouse" => vec!["0".to_string(), "1".to_string(), "2".to_string()],
+            "input:accel_profile" => vec!["flat".to_string(), "adaptive".to_string()],
+            "input:kb_layout" => vec!["us".to_string(), "de".to_string(), "fr".to_string(), "uk".to_string()],
+            "general:col.active_border" => vec![
+                "0xffff0000".to_string(), 
+                "0xff00ff00".to_string(), 
+                "0xff0000ff".to_string(),
+                "0xffffffff".to_string()
+            ],
+            "general:col.inactive_border" => vec![
+                "0x66333333".to_string(), 
+                "0x66666666".to_string(), 
+                "0x66999999".to_string()
+            ],
+            _ => vec![],
+        }
+    }
+
+    fn get_window_rule_suggestions(&self) -> Vec<String> {
+        vec![
+            "float".to_string(),
+            "tile".to_string(),
+            "fullscreen".to_string(),
+            "maximize".to_string(),
+            "pin".to_string(),
+            "workspace 2".to_string(),
+            "workspace special".to_string(),
+            "size 800 600".to_string(),
+            "move 100 100".to_string(),
+            "opacity 0.8".to_string(),
+            "opaque".to_string(),
+            "animation slide".to_string(),
+            "bordercolor rgb(255,0,0)".to_string(),
+            "idleinhibit focus".to_string(),
+            "suppressevent maximize".to_string(),
+        ]
+    }
+
+    fn get_layer_rule_suggestions(&self) -> Vec<String> {
+        vec![
+            "blur".to_string(),
+            "ignorealpha".to_string(),
+            "ignorezero".to_string(),
+            "noanim".to_string(),
+            "dimaround".to_string(),
+            "xray 0".to_string(),
+            "xray 1".to_string(),
+            "animation slide".to_string(),
+            "animation fade".to_string(),
+        ]
+    }
+
+    fn get_workspace_rule_suggestions(&self) -> Vec<String> {
+        vec![
+            "monitor:DP-1".to_string(),
+            "monitor:HDMI-A-1".to_string(),
+            "default:true".to_string(),
+            "gapsout:20".to_string(),
+            "gapsin:10".to_string(),
+            "bordersize:2".to_string(),
+            "border:false".to_string(),
+            "shadow:false".to_string(),
+            "rounding:false".to_string(),
+            "decorate:false".to_string(),
+        ]
     }
 
     async fn load_general_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
@@ -663,21 +991,257 @@ impl UI {
         Ok(())
     }
 
-    async fn load_binds_config(&mut self, _hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
-        // TODO: Load actual keybinds using `hyprctl binds`
-        // For now, keep the default values as placeholders
+    async fn load_binds_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+        match hyprctl.get_binds().await {
+            Ok(keybinds) => {
+                let mut bind_items = Vec::new();
+                
+                for (i, keybind) in keybinds.iter().enumerate() {
+                    // Create a unique key for each keybind
+                    let key = format!("bind_{}", i);
+                    
+                    bind_items.push(ConfigItem {
+                        key: key.clone(),
+                        value: keybind.display_string(),
+                        description: format!("Keybind: {} {}", 
+                            keybind.dispatcher,
+                            keybind.args.as_deref().unwrap_or("")
+                        ),
+                        data_type: ConfigDataType::String,
+                        suggestions: self.get_keybind_suggestions(&keybind.dispatcher),
+                    });
+                }
+                
+                // If we got keybinds, replace the default ones
+                if !bind_items.is_empty() {
+                    self.config_items.insert(FocusedPanel::Binds, bind_items);
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to load keybinds: {}", e);
+                // Create informative placeholder when Hyprland is not available
+                let placeholder_binds = vec![
+                    ConfigItem {
+                        key: "bind_example_1".to_string(),
+                        value: "SUPER + Q → exec [kitty]".to_string(),
+                        description: "Example: Open terminal with Super+Q".to_string(),
+                        data_type: ConfigDataType::String,
+                        suggestions: vec!["exec".to_string(), "killactive".to_string(), "togglefloating".to_string()],
+                    },
+                    ConfigItem {
+                        key: "bind_example_2".to_string(),
+                        value: "SUPER + C → killactive".to_string(),
+                        description: "Example: Close window with Super+C".to_string(),
+                        data_type: ConfigDataType::String,
+                        suggestions: vec!["killactive".to_string(), "exec".to_string(), "workspace".to_string()],
+                    },
+                    ConfigItem {
+                        key: "hyprland_not_running".to_string(),
+                        value: "⚠️  Hyprland not detected".to_string(),
+                        description: "Start Hyprland to see actual keybinds".to_string(),
+                        data_type: ConfigDataType::String,
+                        suggestions: vec![],
+                    },
+                ];
+                self.config_items.insert(FocusedPanel::Binds, placeholder_binds);
+            }
+        }
+        
         Ok(())
     }
 
-    async fn load_window_rules_config(&mut self, _hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
-        // TODO: Load actual window rules
-        // For now, keep the default values as placeholders
+    fn get_keybind_suggestions(&self, dispatcher: &str) -> Vec<String> {
+        match dispatcher {
+            "exec" => vec![
+                "kitty".to_string(),
+                "firefox".to_string(),
+                "code".to_string(),
+                "rofi -show drun".to_string(),
+                "grim -g \"$(slurp)\"".to_string(),
+            ],
+            "workspace" => vec![
+                "1".to_string(), "2".to_string(), "3".to_string(), "4".to_string(),
+                "5".to_string(), "6".to_string(), "7".to_string(), "8".to_string(),
+                "9".to_string(), "10".to_string(),
+            ],
+            "movetoworkspace" => vec![
+                "1".to_string(), "2".to_string(), "3".to_string(), "4".to_string(),
+                "5".to_string(), "6".to_string(), "7".to_string(), "8".to_string(),
+                "9".to_string(), "10".to_string(),
+            ],
+            "movefocus" => vec![
+                "l".to_string(), "r".to_string(), "u".to_string(), "d".to_string(),
+                "left".to_string(), "right".to_string(), "up".to_string(), "down".to_string(),
+            ],
+            "movewindow" => vec![
+                "l".to_string(), "r".to_string(), "u".to_string(), "d".to_string(),
+                "left".to_string(), "right".to_string(), "up".to_string(), "down".to_string(),
+            ],
+            "resizeactive" => vec![
+                "10 0".to_string(), "-10 0".to_string(), "0 10".to_string(), "0 -10".to_string(),
+                "50 0".to_string(), "-50 0".to_string(), "0 50".to_string(), "0 -50".to_string(),
+            ],
+            _ => vec![],
+        }
+    }
+
+    async fn load_window_rules_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+        match hyprctl.get_window_rules().await {
+            Ok(window_rules) => {
+                let mut rule_items = Vec::new();
+                
+                for (i, rule) in window_rules.iter().enumerate() {
+                    let key = format!("window_rule_{}", i);
+                    
+                    // Parse rule to extract description
+                    let description = if rule.contains("windowrule") {
+                        let parts: Vec<&str> = rule.splitn(3, " = ").collect();
+                        if parts.len() >= 2 {
+                            format!("Window rule: {}", parts[1])
+                        } else {
+                            "Window rule configuration".to_string()
+                        }
+                    } else {
+                        format!("Window pattern: {}", rule)
+                    };
+                    
+                    rule_items.push(ConfigItem {
+                        key: key.clone(),
+                        value: rule.clone(),
+                        description,
+                        data_type: ConfigDataType::String,
+                        suggestions: self.get_window_rule_suggestions(),
+                    });
+                }
+                
+                // Replace the default window rules with actual ones
+                if !rule_items.is_empty() {
+                    self.config_items.insert(FocusedPanel::WindowRules, rule_items);
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to load window rules: {}", e);
+                // Create informative placeholders when Hyprland is not available
+                let placeholder_rules = vec![
+                    ConfigItem {
+                        key: "window_rule_example_1".to_string(),
+                        value: "windowrule = float, ^(kitty)$".to_string(),
+                        description: "Example: Float kitty terminal windows".to_string(),
+                        data_type: ConfigDataType::String,
+                        suggestions: self.get_window_rule_suggestions(),
+                    },
+                    ConfigItem {
+                        key: "window_rule_example_2".to_string(),
+                        value: "windowrule = workspace 2, ^(firefox)$".to_string(),
+                        description: "Example: Send Firefox to workspace 2".to_string(),
+                        data_type: ConfigDataType::String,
+                        suggestions: self.get_window_rule_suggestions(),
+                    },
+                    ConfigItem {
+                        key: "hyprland_not_running".to_string(),
+                        value: "⚠️  Hyprland not detected".to_string(),
+                        description: "Start Hyprland to see actual window rules".to_string(),
+                        data_type: ConfigDataType::String,
+                        suggestions: vec![],
+                    },
+                ];
+                self.config_items.insert(FocusedPanel::WindowRules, placeholder_rules);
+            }
+        }
         Ok(())
     }
 
-    async fn load_layer_rules_config(&mut self, _hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
-        // TODO: Load actual layer rules
-        // For now, keep the default values as placeholders
+    async fn load_layer_rules_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+        match hyprctl.get_layer_rules().await {
+            Ok(layer_rules) => {
+                let mut rule_items = Vec::new();
+                
+                for (i, rule) in layer_rules.iter().enumerate() {
+                    let key = format!("layer_rule_{}", i);
+                    
+                    // Parse rule to extract description
+                    let description = if rule.contains("layerrule") {
+                        let parts: Vec<&str> = rule.splitn(3, " = ").collect();
+                        if parts.len() >= 2 {
+                            format!("Layer rule: {}", parts[1])
+                        } else {
+                            "Layer rule configuration".to_string()
+                        }
+                    } else {
+                        format!("Layer configuration: {}", rule)
+                    };
+                    
+                    rule_items.push(ConfigItem {
+                        key: key.clone(),
+                        value: rule.clone(),
+                        description,
+                        data_type: ConfigDataType::String,
+                        suggestions: self.get_layer_rule_suggestions(),
+                    });
+                }
+                
+                // Also load workspace rules if available
+                match hyprctl.get_workspace_rules().await {
+                    Ok(workspace_rules) => {
+                        // Add workspace rules to the layer rules panel for now
+                        for (i, rule) in workspace_rules.iter().enumerate() {
+                            let key = format!("workspace_rule_{}", i);
+                            
+                            rule_items.push(ConfigItem {
+                                key: key.clone(),
+                                value: rule.clone(),
+                                description: format!("Workspace rule: {}", rule),
+                                data_type: ConfigDataType::String,
+                                suggestions: self.get_workspace_rule_suggestions(),
+                            });
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Failed to load workspace rules: {}", e);
+                    }
+                }
+
+                // Replace the default layer rules with actual ones (including workspace rules)
+                if !rule_items.is_empty() {
+                    self.config_items.insert(FocusedPanel::LayerRules, rule_items);
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to load layer rules: {}", e);
+                // Create informative placeholders when Hyprland is not available
+                let placeholder_layer_rules = vec![
+                    ConfigItem {
+                        key: "layer_rule_example_1".to_string(),
+                        value: "layerrule = blur, waybar".to_string(),
+                        description: "Example: Apply blur effect to waybar".to_string(),
+                        data_type: ConfigDataType::String,
+                        suggestions: self.get_layer_rule_suggestions(),
+                    },
+                    ConfigItem {
+                        key: "layer_rule_example_2".to_string(),
+                        value: "layerrule = ignorezero, notifications".to_string(),
+                        description: "Example: Ignore zero alpha pixels in notifications".to_string(),
+                        data_type: ConfigDataType::String,
+                        suggestions: self.get_layer_rule_suggestions(),
+                    },
+                    ConfigItem {
+                        key: "workspace_rule_example_1".to_string(),
+                        value: "workspace = 1, monitor:DP-1".to_string(),
+                        description: "Example: Assign workspace 1 to DP-1 monitor".to_string(),
+                        data_type: ConfigDataType::String,
+                        suggestions: self.get_workspace_rule_suggestions(),
+                    },
+                    ConfigItem {
+                        key: "hyprland_not_running".to_string(),
+                        value: "⚠️  Hyprland not detected".to_string(),
+                        description: "Start Hyprland to see actual layer and workspace rules".to_string(),
+                        data_type: ConfigDataType::String,
+                        suggestions: vec![],
+                    },
+                ];
+                self.config_items.insert(FocusedPanel::LayerRules, placeholder_layer_rules);
+            }
+        }
         Ok(())
     }
 
@@ -706,69 +1270,80 @@ impl UI {
         None
     }
 
+    fn parse_rule_for_editing(&self, rule_value: &str, panel: &FocusedPanel) -> EditMode {
+        // Parse different rule formats
+        
+        let rule_type = match panel {
+            FocusedPanel::WindowRules => RuleType::Window,
+            FocusedPanel::LayerRules => {
+                if rule_value.contains("layerrule") {
+                    RuleType::Layer
+                } else {
+                    RuleType::Workspace
+                }
+            }
+            _ => RuleType::Window,
+        };
+
+        // Try to parse rule format: "ruletype = action, pattern" or similar
+        if let Some((action_part, pattern_part)) = rule_value.split_once(", ") {
+            // Format: "windowrule = float, ^(kitty)$"
+            let action = if let Some((_, action)) = action_part.split_once(" = ") {
+                action.to_string()
+            } else {
+                action_part.to_string()
+            };
+            
+            EditMode::Rule {
+                rule_type,
+                pattern: pattern_part.to_string(),
+                action,
+                editing_field: RuleField::Pattern,
+            }
+        } else if rule_value.contains("class:") || rule_value.contains("title:") {
+            // Format: "class:^(kitty)$" - just a pattern
+            EditMode::Rule {
+                rule_type,
+                pattern: rule_value.to_string(),
+                action: "float".to_string(),
+                editing_field: RuleField::Pattern,
+            }
+        } else {
+            // Fallback to text editing
+            EditMode::Text {
+                current_value: rule_value.to_string(),
+                cursor_pos: rule_value.len(),
+            }
+        }
+    }
+
     pub fn render(&mut self, f: &mut Frame, app_state: (FocusedPanel, bool)) {
         let size = f.area();
-        let (focused_panel, debug) = app_state;
+        let (_, debug) = app_state;
 
-        // Create main layout with better proportions
+        // Create main layout with tabs
         let main_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(4), // Header - taller for better presence  
-                Constraint::Min(0),    // Main content
-                Constraint::Length(4), // Footer - taller for more info
+                Constraint::Length(4),  // Header
+                Constraint::Length(3),  // Tab bar
+                Constraint::Min(0),     // Main content
+                Constraint::Length(3),  // Footer
             ])
-            .margin(1) // Add margin around entire UI
+            .margin(1)
             .split(size);
 
         // Render enhanced header
         self.render_enhanced_header(f, main_chunks[0], debug);
 
-        // Create main content layout - use 2x2 grid for better use of space
-        let content_chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(50), // Left half
-                Constraint::Percentage(50), // Right half
-            ])
-            .margin(1)
-            .split(main_chunks[1]);
+        // Render tab bar
+        self.render_tab_bar(f, main_chunks[1]);
 
-        let left_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Percentage(25), // Larger panels - 4 per side
-                Constraint::Percentage(25),
-                Constraint::Percentage(25),
-                Constraint::Percentage(25),
-            ])
-            .margin(1)
-            .split(content_chunks[0]);
-
-        let right_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Percentage(25),
-                Constraint::Percentage(25),
-                Constraint::Percentage(25),
-                Constraint::Percentage(25),
-            ])
-            .margin(1)
-            .split(content_chunks[1]);
-
-        // Render enhanced configuration panels with better arrangement
-        self.render_enhanced_panel(f, left_chunks[0], FocusedPanel::General, focused_panel);
-        self.render_enhanced_panel(f, left_chunks[1], FocusedPanel::Input, focused_panel);
-        self.render_enhanced_panel(f, left_chunks[2], FocusedPanel::Decoration, focused_panel);
-        self.render_enhanced_panel(f, left_chunks[3], FocusedPanel::Animations, focused_panel);
-
-        self.render_enhanced_panel(f, right_chunks[0], FocusedPanel::Gestures, focused_panel);
-        self.render_enhanced_panel(f, right_chunks[1], FocusedPanel::Binds, focused_panel);
-        self.render_enhanced_panel(f, right_chunks[2], FocusedPanel::WindowRules, focused_panel);
-        self.render_enhanced_panel(f, right_chunks[3], FocusedPanel::Misc, focused_panel);
+        // Render current tab content
+        self.render_current_tab(f, main_chunks[2]);
 
         // Render enhanced footer
-        self.render_enhanced_footer(f, main_chunks[2]);
+        self.render_enhanced_footer(f, main_chunks[3]);
 
         // Render popups and dialogs on top
         if self.show_popup {
@@ -810,6 +1385,8 @@ impl UI {
                 Span::styled("Enter", Style::default().fg(Color::Yellow).bold()),
                 Span::styled(" to edit • ", Style::default().fg(Color::Gray)),
                 Span::styled("Tab", Style::default().fg(Color::Yellow).bold()),
+                Span::styled(" to switch tabs • ", Style::default().fg(Color::Gray)),
+                Span::styled("↑↓", Style::default().fg(Color::Cyan).bold()),
                 Span::styled(" to navigate • ", Style::default().fg(Color::Gray)),
                 Span::styled("S", Style::default().fg(Color::Green).bold()),
                 Span::styled(" to save • ", Style::default().fg(Color::Gray)),
@@ -830,6 +1407,131 @@ impl UI {
             );
 
         f.render_widget(header, area);
+    }
+
+    fn render_tab_bar(&self, f: &mut Frame, area: Rect) {
+        let tabs = vec![
+            FocusedPanel::General,
+            FocusedPanel::Input,
+            FocusedPanel::Decoration,
+            FocusedPanel::Animations,
+            FocusedPanel::Gestures,
+            FocusedPanel::Binds,
+            FocusedPanel::WindowRules,
+            FocusedPanel::LayerRules,
+            FocusedPanel::Misc,
+        ];
+
+        let tab_spans: Vec<Span> = tabs.iter().enumerate().map(|(i, &panel)| {
+            let tab_name = match panel {
+                FocusedPanel::General => "🏠 General",
+                FocusedPanel::Input => "⌨️ Input",
+                FocusedPanel::Decoration => "✨ Decoration",
+                FocusedPanel::Animations => "🎬 Animations",
+                FocusedPanel::Gestures => "👆 Gestures",
+                FocusedPanel::Binds => "🔗 Binds",
+                FocusedPanel::WindowRules => "📏 Win Rules",
+                FocusedPanel::LayerRules => "📐 Layer Rules",
+                FocusedPanel::Misc => "⚙️ Misc",
+            };
+
+            let style = if panel == self.current_tab {
+                Style::default().fg(Color::Yellow).bg(Color::DarkGray).bold()
+            } else {
+                Style::default().fg(Color::Gray)
+            };
+
+            let mut result = vec![Span::styled(tab_name, style)];
+            if i < tabs.len() - 1 {
+                result.push(Span::raw(" │ "));
+            }
+            result
+        }).flatten().collect();
+
+        let tabs_paragraph = Paragraph::new(Line::from(tab_spans))
+            .alignment(Alignment::Center)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Cyan))
+            );
+
+        f.render_widget(tabs_paragraph, area);
+    }
+
+    fn render_current_tab(&mut self, f: &mut Frame, area: Rect) {
+        // Get config items for current tab
+        let config_items = self.config_items.get(&self.current_tab).cloned().unwrap_or_default();
+        
+        // Create list items with enhanced formatting
+        let items: Vec<ListItem> = config_items.iter().map(|item| {
+            let value_style = match &item.data_type {
+                ConfigDataType::Integer { .. } => Style::default().fg(Color::Rgb(100, 255, 100)), // Light green
+                ConfigDataType::Float { .. } => Style::default().fg(Color::Rgb(100, 255, 255)), // Light cyan  
+                ConfigDataType::Boolean => Style::default().fg(Color::Rgb(255, 255, 100)), // Light yellow
+                ConfigDataType::Color => Style::default().fg(Color::Rgb(255, 150, 255)), // Light magenta
+                ConfigDataType::String => Style::default().fg(Color::White),
+                ConfigDataType::Keyword { .. } => Style::default().fg(Color::Rgb(255, 200, 100)), // Light orange
+            };
+
+            let key_display = if item.key.len() > 25 {
+                format!("{}...", &item.key[..22])
+            } else {
+                item.key.clone()
+            };
+
+            let value_display = if item.value.len() > 40 {
+                format!("{}...", &item.value[..37])
+            } else {
+                item.value.clone()
+            };
+
+            let line = Line::from(vec![
+                Span::styled(format!("{:<28}", key_display), Style::default().fg(Color::Rgb(200, 200, 255)).bold()),
+                Span::raw("│ "),
+                Span::styled(value_display, value_style.bold()),
+            ]);
+
+            ListItem::new(vec![
+                line,
+                Line::from(vec![
+                    Span::styled(format!("  {}", item.description), Style::default().fg(Color::DarkGray).italic()),
+                ]),
+            ])
+        }).collect();
+
+        // Panel title
+        let title = match self.current_tab {
+            FocusedPanel::General => "🏠 General Configuration",
+            FocusedPanel::Input => "⌨️ Input Configuration",
+            FocusedPanel::Decoration => "✨ Decoration Configuration",
+            FocusedPanel::Animations => "🎬 Animation Configuration",
+            FocusedPanel::Gestures => "👆 Gesture Configuration",
+            FocusedPanel::Binds => "🔗 Key Bindings Configuration",
+            FocusedPanel::WindowRules => "📏 Window Rules Configuration",
+            FocusedPanel::LayerRules => "📐 Layer Rules Configuration",
+            FocusedPanel::Misc => "⚙️ Miscellaneous Configuration",
+        };
+
+        let list = List::new(items)
+            .block(
+                Block::default()
+                    .title(title)
+                    .title_style(Style::default().fg(Color::Cyan).bold())
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Yellow))
+                    .border_type(BorderType::Rounded)
+            )
+            .highlight_style(
+                Style::default()
+                    .bg(Color::Rgb(60, 60, 120))
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol("▶ ");
+
+        let current_list_state = self.get_current_list_state();
+        f.render_stateful_widget(list, area, current_list_state);
     }
 
     fn render_enhanced_panel(&mut self, f: &mut Frame, area: Rect, panel: FocusedPanel, focused_panel: FocusedPanel) {
@@ -1211,6 +1913,113 @@ impl UI {
                         Span::styled(max_str, Style::default().fg(Color::Gray)),
                     ]));
                 }
+                EditMode::Keybind { modifiers, key, dispatcher, args, editing_field } => {
+                    popup_content.push(Line::from(vec![
+                        Span::styled("Keybind Editor", Style::default().fg(Color::Magenta).bold()),
+                    ]));
+                    popup_content.push(Line::from(""));
+                    
+                    // Show each field with highlighting for the currently editing field
+                    let mod_style = if *editing_field == KeybindField::Modifiers {
+                        Style::default().fg(Color::Yellow).bold()
+                    } else {
+                        Style::default().fg(Color::White)
+                    };
+                    
+                    let key_style = if *editing_field == KeybindField::Key {
+                        Style::default().fg(Color::Yellow).bold()
+                    } else {
+                        Style::default().fg(Color::White)
+                    };
+                    
+                    let dispatcher_style = if *editing_field == KeybindField::Dispatcher {
+                        Style::default().fg(Color::Yellow).bold()
+                    } else {
+                        Style::default().fg(Color::White)
+                    };
+                    
+                    let args_style = if *editing_field == KeybindField::Args {
+                        Style::default().fg(Color::Yellow).bold()
+                    } else {
+                        Style::default().fg(Color::White)
+                    };
+                    
+                    let modifiers_text = modifiers.join(" + ");
+                    popup_content.push(Line::from(vec![
+                        Span::styled("Modifiers: ", Style::default().fg(Color::Cyan).bold()),
+                        Span::styled(modifiers_text, mod_style),
+                    ]));
+                    
+                    popup_content.push(Line::from(vec![
+                        Span::styled("Key: ", Style::default().fg(Color::Cyan).bold()),
+                        Span::styled(key, key_style),
+                    ]));
+                    
+                    popup_content.push(Line::from(vec![
+                        Span::styled("Action: ", Style::default().fg(Color::Cyan).bold()),
+                        Span::styled(dispatcher, dispatcher_style),
+                    ]));
+                    
+                    popup_content.push(Line::from(vec![
+                        Span::styled("Arguments: ", Style::default().fg(Color::Cyan).bold()),
+                        Span::styled(args, args_style),
+                    ]));
+                    
+                    popup_content.push(Line::from(""));
+                    popup_content.push(Line::from(vec![
+                        Span::styled("Tab", Style::default().fg(Color::Yellow).bold()),
+                        Span::styled(" - Next field  ", Style::default().fg(Color::Gray)),
+                        Span::styled("Type", Style::default().fg(Color::Yellow).bold()),
+                        Span::styled(" - Edit", Style::default().fg(Color::Gray)),
+                    ]));
+                }
+                EditMode::Rule { rule_type, pattern, action, editing_field } => {
+                    popup_content.push(Line::from(vec![
+                        Span::styled("Rule Editor", Style::default().fg(Color::Magenta).bold()),
+                    ]));
+                    popup_content.push(Line::from(""));
+
+                    let rule_type_name = match rule_type {
+                        RuleType::Window => "Window Rule",
+                        RuleType::Layer => "Layer Rule", 
+                        RuleType::Workspace => "Workspace Rule",
+                    };
+                    
+                    popup_content.push(Line::from(vec![
+                        Span::styled("Type: ", Style::default().fg(Color::Cyan).bold()),
+                        Span::styled(rule_type_name, Style::default().fg(Color::White)),
+                    ]));
+                    
+                    let pattern_style = if *editing_field == RuleField::Pattern {
+                        Style::default().fg(Color::Yellow).bold()
+                    } else {
+                        Style::default().fg(Color::White)
+                    };
+                    
+                    let action_style = if *editing_field == RuleField::Action {
+                        Style::default().fg(Color::Yellow).bold()
+                    } else {
+                        Style::default().fg(Color::White)
+                    };
+                    
+                    popup_content.push(Line::from(vec![
+                        Span::styled("Pattern: ", Style::default().fg(Color::Cyan).bold()),
+                        Span::styled(pattern, pattern_style),
+                    ]));
+                    
+                    popup_content.push(Line::from(vec![
+                        Span::styled("Action: ", Style::default().fg(Color::Cyan).bold()),
+                        Span::styled(action, action_style),
+                    ]));
+                    
+                    popup_content.push(Line::from(""));
+                    popup_content.push(Line::from(vec![
+                        Span::styled("Tab", Style::default().fg(Color::Yellow).bold()),
+                        Span::styled(" - Switch fields  ", Style::default().fg(Color::Gray)),
+                        Span::styled("Type", Style::default().fg(Color::Yellow).bold()),
+                        Span::styled(" - Edit", Style::default().fg(Color::Gray)),
+                    ]));
+                }
                 EditMode::None => {
                     popup_content.push(Line::from(vec![
                         Span::styled("Current Value: ", Style::default().fg(Color::Green).bold()),
@@ -1391,14 +2200,14 @@ impl UI {
         }
     }
 
-    pub fn scroll_up(&mut self, panel: FocusedPanel) {
-        let items_count = self.get_panel_items_count(panel);
+    pub fn scroll_up(&mut self) {
+        let items_count = self.get_panel_items_count(self.current_tab);
         
         if items_count == 0 {
             return;
         }
 
-        let list_state = self.get_list_state_mut(panel);
+        let list_state = self.get_current_list_state();
         let selected = list_state.selected().unwrap_or(0);
         if selected > 0 {
             list_state.select(Some(selected - 1));
@@ -1407,14 +2216,14 @@ impl UI {
         }
     }
 
-    pub fn scroll_down(&mut self, panel: FocusedPanel) {
-        let items_count = self.get_panel_items_count(panel);
+    pub fn scroll_down(&mut self) {
+        let items_count = self.get_panel_items_count(self.current_tab);
         
         if items_count == 0 {
             return;
         }
 
-        let list_state = self.get_list_state_mut(panel);
+        let list_state = self.get_current_list_state();
         let selected = list_state.selected().unwrap_or(0);
         if selected < items_count - 1 {
             list_state.select(Some(selected + 1));
@@ -1423,74 +2232,124 @@ impl UI {
         }
     }
 
-    pub async fn start_editing(&mut self, panel: FocusedPanel) -> Result<(), anyhow::Error> {
-        // Get the currently selected item
-        let config_items = self.config_items.get(&panel).cloned().unwrap_or_default();
+    pub async fn start_editing(&mut self) -> Result<(), anyhow::Error> {
+        // Get the currently selected item from current tab
+        let config_items = self.config_items.get(&self.current_tab).cloned().unwrap_or_default();
         if config_items.is_empty() {
             return Ok(());
         }
 
-        let list_state = self.get_list_state_mut(panel);
+        let list_state = self.get_current_list_state();
         let selected_index = list_state.selected().unwrap_or(0);
         
         if let Some(item) = config_items.get(selected_index) {
-            self.editing_item = Some((panel, item.key.clone()));
+            self.editing_item = Some((self.current_tab, item.key.clone()));
             
-            // Set edit mode based on data type
-            self.edit_mode = match &item.data_type {
-                ConfigDataType::Boolean => {
-                    let current_value = item.value.to_lowercase() == "true";
-                    EditMode::Boolean { current_value }
-                }
-                ConfigDataType::Integer { min, max } => {
-                    if let (Some(min_val), Some(max_val)) = (min, max) {
-                        let current_value = item.value.parse::<f32>().unwrap_or(*min_val as f32);
-                        EditMode::Slider {
-                            current_value,
-                            min: *min_val as f32,
-                            max: *max_val as f32,
-                            step: 1.0,
+            // Set edit mode based on data type and panel
+            self.edit_mode = if self.current_tab == FocusedPanel::Binds && item.key.starts_with("bind_") {
+                // Special handling for keybinds
+                self.parse_keybind_for_editing(&item.value)
+            } else if (self.current_tab == FocusedPanel::WindowRules && item.key.starts_with("window_rule_")) ||
+                      (self.current_tab == FocusedPanel::LayerRules && (item.key.starts_with("layer_rule_") || item.key.starts_with("workspace_rule_"))) {
+                // Special handling for rules
+                self.parse_rule_for_editing(&item.value, &self.current_tab)
+            } else {
+                match &item.data_type {
+                    ConfigDataType::Boolean => {
+                        let current_value = item.value.to_lowercase() == "true";
+                        EditMode::Boolean { current_value }
+                    }
+                    ConfigDataType::Integer { min, max } => {
+                        if let (Some(min_val), Some(max_val)) = (min, max) {
+                            let current_value = item.value.parse::<f32>().unwrap_or(*min_val as f32);
+                            EditMode::Slider {
+                                current_value,
+                                min: *min_val as f32,
+                                max: *max_val as f32,
+                                step: 1.0,
+                            }
+                        } else {
+                            EditMode::Text {
+                                current_value: item.value.clone(),
+                                cursor_pos: item.value.len(),
+                            }
                         }
-                    } else {
+                    }
+                    ConfigDataType::Float { min, max } => {
+                        if let (Some(min_val), Some(max_val)) = (min, max) {
+                            let current_value = item.value.parse::<f32>().unwrap_or(*min_val);
+                            EditMode::Slider {
+                                current_value,
+                                min: *min_val,
+                                max: *max_val,
+                                step: 0.1,
+                            }
+                        } else {
+                            EditMode::Text {
+                                current_value: item.value.clone(),
+                                cursor_pos: item.value.len(),
+                            }
+                        }
+                    }
+                    ConfigDataType::Keyword { options } => {
+                        let selected = options.iter().position(|opt| opt == &item.value).unwrap_or(0);
+                        EditMode::Select {
+                            options: options.clone(),
+                            selected,
+                        }
+                    }
+                    _ => {
                         EditMode::Text {
                             current_value: item.value.clone(),
                             cursor_pos: item.value.len(),
                         }
-                    }
-                }
-                ConfigDataType::Float { min, max } => {
-                    if let (Some(min_val), Some(max_val)) = (min, max) {
-                        let current_value = item.value.parse::<f32>().unwrap_or(*min_val);
-                        EditMode::Slider {
-                            current_value,
-                            min: *min_val,
-                            max: *max_val,
-                            step: 0.1,
-                        }
-                    } else {
-                        EditMode::Text {
-                            current_value: item.value.clone(),
-                            cursor_pos: item.value.len(),
-                        }
-                    }
-                }
-                ConfigDataType::Keyword { options } => {
-                    let selected = options.iter().position(|opt| opt == &item.value).unwrap_or(0);
-                    EditMode::Select {
-                        options: options.clone(),
-                        selected,
-                    }
-                }
-                _ => {
-                    EditMode::Text {
-                        current_value: item.value.clone(),
-                        cursor_pos: item.value.len(),
                     }
                 }
             };
         }
         
         Ok(())
+    }
+
+    fn parse_keybind_for_editing(&self, display_string: &str) -> EditMode {
+        // Parse display string like "SUPER + q → exec [kitty]"
+        if let Some((key_part, command_part)) = display_string.split_once(" → ") {
+            let key_part = key_part.trim();
+            let command_part = command_part.trim();
+            
+            // Parse modifiers and key
+            let (modifiers, key) = if let Some((mods, k)) = key_part.rsplit_once(" + ") {
+                (mods.split(" + ").map(|s| s.to_string()).collect(), k.to_string())
+            } else {
+                (vec![], key_part.to_string())
+            };
+            
+            // Parse dispatcher and args
+            let (dispatcher, args) = if let Some((disp, arg_part)) = command_part.split_once(' ') {
+                let args = if arg_part.starts_with('[') && arg_part.ends_with(']') {
+                    arg_part.trim_start_matches('[').trim_end_matches(']').to_string()
+                } else {
+                    arg_part.to_string()
+                };
+                (disp.to_string(), args)
+            } else {
+                (command_part.to_string(), String::new())
+            };
+            
+            return EditMode::Keybind {
+                modifiers,
+                key,
+                dispatcher,
+                args,
+                editing_field: KeybindField::Dispatcher, // Start with dispatcher
+            };
+        }
+        
+        // Fallback to text editing
+        EditMode::Text {
+            current_value: display_string.to_string(),
+            cursor_pos: display_string.len(),
+        }
     }
 
     pub async fn apply_edit(&mut self) -> Result<(), anyhow::Error> {
@@ -1507,6 +2366,30 @@ impl UI {
                         (*current_value as i32).to_string()
                     } else {
                         format!("{:.2}", current_value)
+                    }
+                }
+                EditMode::Keybind { modifiers, key, dispatcher, args, .. } => {
+                    // Create display string for keybind
+                    let mod_string = if modifiers.is_empty() {
+                        String::new()
+                    } else {
+                        format!("{} + ", modifiers.join(" + "))
+                    };
+                    
+                    let args_string = if args.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" [{}]", args)
+                    };
+                    
+                    format!("{}{} → {}{}", mod_string, key, dispatcher, args_string)
+                }
+                EditMode::Rule { rule_type, pattern, action, .. } => {
+                    // Format rule for display and application
+                    match rule_type {
+                        RuleType::Window => format!("windowrule = {}, {}", action, pattern),
+                        RuleType::Layer => format!("layerrule = {}, {}", action, pattern),
+                        RuleType::Workspace => format!("workspace = {}, {}", action, pattern),
                     }
                 }
                 EditMode::None => return Ok(()),
@@ -1542,6 +2425,30 @@ impl UI {
                         (*current_value as i32).to_string()
                     } else {
                         format!("{:.2}", current_value)
+                    }
+                }
+                EditMode::Keybind { modifiers, key, dispatcher, args, .. } => {
+                    // Create display string for keybind
+                    let mod_string = if modifiers.is_empty() {
+                        String::new()
+                    } else {
+                        format!("{} + ", modifiers.join(" + "))
+                    };
+                    
+                    let args_string = if args.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" [{}]", args)
+                    };
+                    
+                    format!("{}{} → {}{}", mod_string, key, dispatcher, args_string)
+                }
+                EditMode::Rule { rule_type, pattern, action, .. } => {
+                    // Format rule for display and application
+                    match rule_type {
+                        RuleType::Window => format!("windowrule = {}, {}", action, pattern),
+                        RuleType::Layer => format!("layerrule = {}, {}", action, pattern),
+                        RuleType::Workspace => format!("workspace = {}, {}", action, pattern),
                     }
                 }
                 EditMode::None => return Ok(()),

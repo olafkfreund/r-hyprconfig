@@ -104,7 +104,7 @@ impl App {
         Ok(Self {
             state: AppState::Running,
             debug,
-            focused_panel: FocusedPanel::General,
+            focused_panel: ui.current_tab,
             config,
             hyprctl,
             ui,
@@ -185,19 +185,21 @@ impl App {
                 self.state = AppState::Quitting;
             }
             KeyCode::Tab | KeyCode::Right => {
-                self.focused_panel = self.focused_panel.next();
+                self.ui.next_tab();
+                self.focused_panel = self.ui.current_tab;
             }
             KeyCode::BackTab | KeyCode::Left => {
-                self.focused_panel = self.focused_panel.previous();
+                self.ui.previous_tab();
+                self.focused_panel = self.ui.current_tab;
             }
             KeyCode::Up => {
-                self.ui.scroll_up(self.focused_panel);
+                self.ui.scroll_up();
             }
             KeyCode::Down => {
-                self.ui.scroll_down(self.focused_panel);
+                self.ui.scroll_down();
             }
             KeyCode::Enter => {
-                self.ui.start_editing(self.focused_panel).await?;
+                self.ui.start_editing().await?;
             }
             KeyCode::Char('r') | KeyCode::Char('R') => {
                 self.ui.show_reload_dialog = true;
@@ -384,6 +386,127 @@ impl App {
                     }
                     KeyCode::End => {
                         *current_value = *max;
+                    }
+                    _ => {}
+                }
+            }
+            EditMode::Keybind { modifiers, key: key_field, dispatcher, args, editing_field } => {
+                match key {
+                    KeyCode::Enter => {
+                        match self.ui.apply_edit_with_hyprctl(&self.hyprctl).await {
+                            Ok(()) => {
+                                self.ui.show_popup = true;
+                                self.ui.popup_message = "Keybind updated successfully!".to_string();
+                            }
+                            Err(_) => {
+                                // Error message already set in apply_edit_with_hyprctl
+                            }
+                        }
+                    }
+                    KeyCode::Esc => {
+                        self.ui.cancel_edit();
+                    }
+                    KeyCode::Tab => {
+                        // Cycle through editing fields
+                        *editing_field = match editing_field {
+                            crate::ui::KeybindField::Modifiers => crate::ui::KeybindField::Key,
+                            crate::ui::KeybindField::Key => crate::ui::KeybindField::Dispatcher,
+                            crate::ui::KeybindField::Dispatcher => crate::ui::KeybindField::Args,
+                            crate::ui::KeybindField::Args => crate::ui::KeybindField::Modifiers,
+                        };
+                    }
+                    KeyCode::Char(c) => {
+                        // Add character to the currently editing field
+                        match editing_field {
+                            crate::ui::KeybindField::Key => {
+                                *key_field = c.to_string();
+                            }
+                            crate::ui::KeybindField::Dispatcher => {
+                                dispatcher.push(c);
+                            }
+                            crate::ui::KeybindField::Args => {
+                                args.push(c);
+                            }
+                            crate::ui::KeybindField::Modifiers => {
+                                // Handle modifier addition
+                                let mod_string = match c {
+                                    's' => "SUPER",
+                                    'a' => "ALT", 
+                                    'c' => "CTRL",
+                                    'h' => "SHIFT",
+                                    _ => return Ok(()),
+                                };
+                                
+                                if !modifiers.contains(&mod_string.to_string()) {
+                                    modifiers.push(mod_string.to_string());
+                                }
+                            }
+                        }
+                    }
+                    KeyCode::Backspace => {
+                        // Remove characters from the currently editing field
+                        match editing_field {
+                            crate::ui::KeybindField::Key => {
+                                key_field.clear();
+                            }
+                            crate::ui::KeybindField::Dispatcher => {
+                                dispatcher.pop();
+                            }
+                            crate::ui::KeybindField::Args => {
+                                args.pop();
+                            }
+                            crate::ui::KeybindField::Modifiers => {
+                                modifiers.pop();
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            EditMode::Rule { rule_type, pattern, action, editing_field } => {
+                match key {
+                    KeyCode::Enter => {
+                        match self.ui.apply_edit_with_hyprctl(&self.hyprctl).await {
+                            Ok(()) => {
+                                self.ui.show_popup = true;
+                                self.ui.popup_message = "Rule updated successfully!".to_string();
+                            }
+                            Err(_) => {
+                                // Error message already set in apply_edit_with_hyprctl
+                            }
+                        }
+                    }
+                    KeyCode::Esc => {
+                        self.ui.cancel_edit();
+                    }
+                    KeyCode::Tab => {
+                        // Cycle between pattern and action editing
+                        *editing_field = match editing_field {
+                            crate::ui::RuleField::Pattern => crate::ui::RuleField::Action,
+                            crate::ui::RuleField::Action => crate::ui::RuleField::Pattern,
+                        };
+                    }
+                    KeyCode::Char(c) => {
+                        // Add character to the currently editing field
+                        match editing_field {
+                            crate::ui::RuleField::Pattern => {
+                                pattern.push(c);
+                            }
+                            crate::ui::RuleField::Action => {
+                                action.push(c);
+                            }
+                        }
+                    }
+                    KeyCode::Backspace => {
+                        // Remove characters from the currently editing field
+                        match editing_field {
+                            crate::ui::RuleField::Pattern => {
+                                pattern.pop();
+                            }
+                            crate::ui::RuleField::Action => {
+                                action.pop();
+                            }
+                        }
                     }
                     _ => {}
                 }
