@@ -1,15 +1,43 @@
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
     widgets::{
-        Block, BorderType, Borders, List, ListItem, ListState, Paragraph, Scrollbar,
-        ScrollbarOrientation, ScrollbarState,
+        Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, 
+        Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
     },
     Frame,
 };
 
 use crate::app::FocusedPanel;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum EditMode {
+    None,
+    Text { current_value: String, cursor_pos: usize },
+    Slider { current_value: f32, min: f32, max: f32, step: f32 },
+    Select { options: Vec<String>, selected: usize },
+    Boolean { current_value: bool },
+}
+
+#[derive(Debug, Clone)]
+pub struct ConfigItem {
+    pub key: String,
+    pub value: String,
+    pub description: String,
+    pub data_type: ConfigDataType,
+    pub suggestions: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConfigDataType {
+    Integer { min: Option<i32>, max: Option<i32> },
+    Float { min: Option<f32>, max: Option<f32> },
+    Boolean,
+    String,
+    Color,
+    Keyword { options: Vec<String> },
+}
 
 pub struct UI {
     pub general_list_state: ListState,
@@ -21,6 +49,15 @@ pub struct UI {
     pub window_rules_list_state: ListState,
     pub layer_rules_list_state: ListState,
     pub misc_list_state: ListState,
+    
+    // New editing state
+    pub edit_mode: EditMode,
+    pub editing_item: Option<(FocusedPanel, String)>,
+    pub show_popup: bool,
+    pub popup_message: String,
+    pub show_save_dialog: bool,
+    pub show_reload_dialog: bool,
+    pub config_items: std::collections::HashMap<FocusedPanel, Vec<ConfigItem>>,
 }
 
 impl UI {
@@ -35,6 +72,14 @@ impl UI {
             window_rules_list_state: ListState::default(),
             layer_rules_list_state: ListState::default(),
             misc_list_state: ListState::default(),
+            
+            edit_mode: EditMode::None,
+            editing_item: None,
+            show_popup: false,
+            popup_message: String::new(),
+            show_save_dialog: false,
+            show_reload_dialog: false,
+            config_items: std::collections::HashMap::new(),
         };
 
         // Initialize with first item selected for each panel
@@ -48,124 +93,327 @@ impl UI {
         ui.layer_rules_list_state.select(Some(0));
         ui.misc_list_state.select(Some(0));
 
+        // Initialize config items with enhanced data
+        ui.initialize_config_items();
+
         ui
+    }
+
+    fn initialize_config_items(&mut self) {
+        
+        // General configuration items
+        let general_items = vec![
+            ConfigItem {
+                key: "gaps_in".to_string(),
+                value: "5".to_string(),
+                description: "Inner gaps between windows".to_string(),
+                data_type: ConfigDataType::Integer { min: Some(0), max: Some(50) },
+                suggestions: vec!["0".to_string(), "5".to_string(), "10".to_string(), "15".to_string()],
+            },
+            ConfigItem {
+                key: "gaps_out".to_string(),
+                value: "20".to_string(),
+                description: "Outer gaps between windows and monitor edges".to_string(),
+                data_type: ConfigDataType::Integer { min: Some(0), max: Some(100) },
+                suggestions: vec!["10".to_string(), "20".to_string(), "30".to_string()],
+            },
+            ConfigItem {
+                key: "border_size".to_string(),
+                value: "2".to_string(),
+                description: "Border width in pixels".to_string(),
+                data_type: ConfigDataType::Integer { min: Some(0), max: Some(20) },
+                suggestions: vec!["1".to_string(), "2".to_string(), "3".to_string(), "4".to_string()],
+            },
+            ConfigItem {
+                key: "col.active_border".to_string(),
+                value: "rgba(33ccffee)".to_string(),
+                description: "Active window border color".to_string(),
+                data_type: ConfigDataType::Color,
+                suggestions: vec![
+                    "rgba(33ccffee)".to_string(),
+                    "rgba(ff6666ee)".to_string(), 
+                    "rgba(66ff66ee)".to_string(),
+                    "rgba(ffff66ee)".to_string(),
+                    "rgb(255, 255, 255)".to_string(),
+                ],
+            },
+            ConfigItem {
+                key: "col.inactive_border".to_string(),
+                value: "rgba(595959aa)".to_string(),
+                description: "Inactive window border color".to_string(),
+                data_type: ConfigDataType::Color,
+                suggestions: vec![
+                    "rgba(595959aa)".to_string(),
+                    "rgba(333333aa)".to_string(),
+                    "rgba(666666aa)".to_string(),
+                ],
+            },
+        ];
+
+        // Input configuration items
+        let input_items = vec![
+            ConfigItem {
+                key: "kb_layout".to_string(),
+                value: "us".to_string(),
+                description: "Keyboard layout".to_string(),
+                data_type: ConfigDataType::Keyword { 
+                    options: vec!["us".to_string(), "uk".to_string(), "de".to_string(), "fr".to_string(), "es".to_string()] 
+                },
+                suggestions: vec!["us".to_string(), "uk".to_string(), "de".to_string()],
+            },
+            ConfigItem {
+                key: "follow_mouse".to_string(),
+                value: "1".to_string(),
+                description: "Follow mouse focus behavior".to_string(),
+                data_type: ConfigDataType::Keyword { 
+                    options: vec!["0".to_string(), "1".to_string(), "2".to_string(), "3".to_string()] 
+                },
+                suggestions: vec!["0".to_string(), "1".to_string(), "2".to_string()],
+            },
+            ConfigItem {
+                key: "sensitivity".to_string(),
+                value: "0.0".to_string(),
+                description: "Mouse sensitivity (-1.0 to 1.0)".to_string(),
+                data_type: ConfigDataType::Float { min: Some(-1.0), max: Some(1.0) },
+                suggestions: vec!["-0.5".to_string(), "0.0".to_string(), "0.5".to_string()],
+            },
+        ];
+
+        // Decoration items
+        let decoration_items = vec![
+            ConfigItem {
+                key: "rounding".to_string(),
+                value: "10".to_string(),
+                description: "Window corner rounding in pixels".to_string(),
+                data_type: ConfigDataType::Integer { min: Some(0), max: Some(50) },
+                suggestions: vec!["0".to_string(), "5".to_string(), "10".to_string(), "15".to_string()],
+            },
+            ConfigItem {
+                key: "blur.enabled".to_string(),
+                value: "true".to_string(),
+                description: "Enable window blur effect".to_string(),
+                data_type: ConfigDataType::Boolean,
+                suggestions: vec!["true".to_string(), "false".to_string()],
+            },
+            ConfigItem {
+                key: "blur.size".to_string(),
+                value: "3".to_string(),
+                description: "Blur effect radius".to_string(),
+                data_type: ConfigDataType::Integer { min: Some(1), max: Some(20) },
+                suggestions: vec!["1".to_string(), "3".to_string(), "5".to_string(), "8".to_string()],
+            },
+        ];
+
+        self.config_items.insert(FocusedPanel::General, general_items);
+        self.config_items.insert(FocusedPanel::Input, input_items);
+        self.config_items.insert(FocusedPanel::Decoration, decoration_items);
+        
+        // Initialize other panels with placeholder items for now
+        self.config_items.insert(FocusedPanel::Animations, vec![]);
+        self.config_items.insert(FocusedPanel::Gestures, vec![]);
+        self.config_items.insert(FocusedPanel::Binds, vec![]);
+        self.config_items.insert(FocusedPanel::WindowRules, vec![]);
+        self.config_items.insert(FocusedPanel::LayerRules, vec![]);
+        self.config_items.insert(FocusedPanel::Misc, vec![]);
     }
 
     pub fn render(&mut self, f: &mut Frame, app_state: (FocusedPanel, bool)) {
         let size = f.area();
+        let (focused_panel, debug) = app_state;
 
-        // Create main layout
+        // Create main layout with better proportions
         let main_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3), // Header
+                Constraint::Length(4), // Header - taller for better presence  
                 Constraint::Min(0),    // Main content
-                Constraint::Length(3), // Footer
+                Constraint::Length(4), // Footer - taller for more info
             ])
+            .margin(1) // Add margin around entire UI
             .split(size);
 
-        let (focused_panel, debug) = app_state;
-        
-        // Render header
-        self.render_header(f, main_chunks[0], debug);
+        // Render enhanced header
+        self.render_enhanced_header(f, main_chunks[0], debug);
 
-        // Create grid layout for configuration panels
+        // Create main content layout - use 2x2 grid for better use of space
         let content_chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
-                Constraint::Percentage(33),
-                Constraint::Percentage(34),
-                Constraint::Percentage(33),
+                Constraint::Percentage(50), // Left half
+                Constraint::Percentage(50), // Right half
             ])
+            .margin(1)
             .split(main_chunks[1]);
 
         let left_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Percentage(33),
-                Constraint::Percentage(34),
-                Constraint::Percentage(33),
+                Constraint::Percentage(25), // Larger panels - 4 per side
+                Constraint::Percentage(25),
+                Constraint::Percentage(25),
+                Constraint::Percentage(25),
             ])
+            .margin(1)
             .split(content_chunks[0]);
-
-        let middle_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Percentage(33),
-                Constraint::Percentage(34),
-                Constraint::Percentage(33),
-            ])
-            .split(content_chunks[1]);
 
         let right_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Percentage(33),
-                Constraint::Percentage(34),
-                Constraint::Percentage(33),
+                Constraint::Percentage(25),
+                Constraint::Percentage(25),
+                Constraint::Percentage(25),
+                Constraint::Percentage(25),
             ])
-            .split(content_chunks[2]);
+            .margin(1)
+            .split(content_chunks[1]);
 
-        // Render configuration panels
-        self.render_panel(f, left_chunks[0], FocusedPanel::General, focused_panel);
-        self.render_panel(f, left_chunks[1], FocusedPanel::Input, focused_panel);
-        self.render_panel(f, left_chunks[2], FocusedPanel::Decoration, focused_panel);
+        // Render enhanced configuration panels with better arrangement
+        self.render_enhanced_panel(f, left_chunks[0], FocusedPanel::General, focused_panel);
+        self.render_enhanced_panel(f, left_chunks[1], FocusedPanel::Input, focused_panel);
+        self.render_enhanced_panel(f, left_chunks[2], FocusedPanel::Decoration, focused_panel);
+        self.render_enhanced_panel(f, left_chunks[3], FocusedPanel::Animations, focused_panel);
 
-        self.render_panel(f, middle_chunks[0], FocusedPanel::Animations, focused_panel);
-        self.render_panel(f, middle_chunks[1], FocusedPanel::Gestures, focused_panel);
-        self.render_panel(f, middle_chunks[2], FocusedPanel::Binds, focused_panel);
+        self.render_enhanced_panel(f, right_chunks[0], FocusedPanel::Gestures, focused_panel);
+        self.render_enhanced_panel(f, right_chunks[1], FocusedPanel::Binds, focused_panel);
+        self.render_enhanced_panel(f, right_chunks[2], FocusedPanel::WindowRules, focused_panel);
+        self.render_enhanced_panel(f, right_chunks[3], FocusedPanel::Misc, focused_panel);
 
-        self.render_panel(f, right_chunks[0], FocusedPanel::WindowRules, focused_panel);
-        self.render_panel(f, right_chunks[1], FocusedPanel::LayerRules, focused_panel);
-        self.render_panel(f, right_chunks[2], FocusedPanel::Misc, focused_panel);
+        // Render enhanced footer
+        self.render_enhanced_footer(f, main_chunks[2]);
 
-        // Render footer
-        self.render_footer(f, main_chunks[2]);
+        // Render popups and dialogs on top
+        if self.show_popup {
+            self.render_popup(f, size);
+        }
+
+        if self.show_save_dialog {
+            self.render_save_dialog(f, size);
+        }
+
+        if self.show_reload_dialog {
+            self.render_reload_dialog(f, size);
+        }
+
+        if self.edit_mode != EditMode::None {
+            self.render_edit_popup(f, size);
+        }
     }
 
-    fn render_header(&self, f: &mut Frame, area: Rect, debug: bool) {
-        let title = if debug {
-            "R-Hyprconfig - Debug Mode"
+    fn render_enhanced_header(&self, f: &mut Frame, area: Rect, debug: bool) {
+        let _title_text = if debug {
+            "🦀 R-Hyprconfig - Debug Mode 🔧"
         } else {
-            "R-Hyprconfig - Hyprland Configuration Manager"
+            "🎨 R-Hyprconfig - Hyprland Configuration Manager ⚡"
         };
 
-        let header = Paragraph::new(title)
-            .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+        // Create gradient-like effect with different colors
+        let title_spans = vec![
+            Span::styled("🎨 R-Hyprconfig", Style::default().fg(Color::Rgb(0, 255, 255)).bold()),
+            Span::raw(" - "),
+            Span::styled("Hyprland Configuration Manager", Style::default().fg(Color::Rgb(255, 165, 0)).bold()),
+            Span::raw(" ⚡"),
+        ];
+
+        let header_content = vec![
+            Line::from(title_spans),
+            Line::from(vec![
+                Span::styled("Press ", Style::default().fg(Color::Gray)),
+                Span::styled("Enter", Style::default().fg(Color::Yellow).bold()),
+                Span::styled(" to edit • ", Style::default().fg(Color::Gray)),
+                Span::styled("Tab", Style::default().fg(Color::Yellow).bold()),
+                Span::styled(" to navigate • ", Style::default().fg(Color::Gray)),
+                Span::styled("S", Style::default().fg(Color::Green).bold()),
+                Span::styled(" to save • ", Style::default().fg(Color::Gray)),
+                Span::styled("R", Style::default().fg(Color::Blue).bold()),
+                Span::styled(" to reload", Style::default().fg(Color::Gray)),
+            ]),
+        ];
+
+        let header = Paragraph::new(header_content)
             .alignment(Alignment::Center)
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::White))
-                    .border_type(BorderType::Rounded),
+                    .border_style(Style::default().fg(Color::Rgb(100, 200, 255)))
+                    .border_type(BorderType::Double)
+                    .title(" Hyprland TUI ")
+                    .title_style(Style::default().fg(Color::Cyan).bold())
             );
 
         f.render_widget(header, area);
     }
 
-    fn render_panel(&mut self, f: &mut Frame, area: Rect, panel: FocusedPanel, focused_panel: FocusedPanel) {
+    fn render_enhanced_panel(&mut self, f: &mut Frame, area: Rect, panel: FocusedPanel, focused_panel: FocusedPanel) {
         let is_focused = focused_panel == panel;
-        let border_style = if is_focused {
-            Style::default().fg(Color::Yellow)
+        
+        // Enhanced visual styling
+        let (border_style, border_type, panel_bg) = if is_focused {
+            (
+                Style::default().fg(Color::Rgb(255, 215, 0)), // Gold for focused
+                BorderType::Double,
+                Some(Color::Rgb(10, 10, 30)) // Dark blue background
+            )
         } else {
-            Style::default().fg(Color::White)
+            (
+                Style::default().fg(Color::Rgb(100, 150, 200)), // Light blue for unfocused
+                BorderType::Rounded,
+                None
+            )
         };
 
-        let block = Block::default()
-            .title(panel.as_str())
+        // Get enhanced config items
+        let config_items = self.config_items.get(&panel).cloned().unwrap_or_default();
+        
+        // Create enhanced list items with better formatting
+        let items: Vec<ListItem> = config_items.iter().map(|item| {
+            let value_style = match &item.data_type {
+                ConfigDataType::Integer { .. } => Style::default().fg(Color::Rgb(100, 255, 100)), // Light green
+                ConfigDataType::Float { .. } => Style::default().fg(Color::Rgb(100, 255, 255)), // Light cyan
+                ConfigDataType::Boolean => Style::default().fg(Color::Rgb(255, 255, 100)), // Light yellow
+                ConfigDataType::Color => Style::default().fg(Color::Rgb(255, 150, 255)), // Light magenta
+                ConfigDataType::String => Style::default().fg(Color::White),
+                ConfigDataType::Keyword { .. } => Style::default().fg(Color::Rgb(255, 200, 100)), // Light orange
+            };
+
+            let line = Line::from(vec![
+                Span::styled(&item.key, Style::default().fg(Color::Rgb(200, 200, 255)).bold()),
+                Span::raw(": "),
+                Span::styled(&item.value, value_style.bold()),
+            ]);
+
+            ListItem::new(line)
+        }).collect();
+
+        // Panel title with emoji
+        let title = match panel {
+            FocusedPanel::General => "🏠 General",
+            FocusedPanel::Input => "⌨️  Input", 
+            FocusedPanel::Decoration => "✨ Decoration",
+            FocusedPanel::Animations => "🎬 Animations",
+            FocusedPanel::Gestures => "👆 Gestures",
+            FocusedPanel::Binds => "🔗 Key Binds",
+            FocusedPanel::WindowRules => "📏 Window Rules",
+            FocusedPanel::LayerRules => "📐 Layer Rules",
+            FocusedPanel::Misc => "⚙️  Misc",
+        };
+
+        let mut block = Block::default()
+            .title(title)
+            .title_style(Style::default().fg(Color::White).bold())
             .borders(Borders::ALL)
             .border_style(border_style)
-            .border_type(BorderType::Rounded);
+            .border_type(border_type);
 
-        // Create items without borrowing self
-        let items = Self::get_static_panel_items(panel);
-        let items_len = items.len();
-        
+        if let Some(bg) = panel_bg {
+            block = block.style(Style::default().bg(bg));
+        }
+
         let list = List::new(items)
             .block(block)
             .highlight_style(
                 Style::default()
-                    .bg(Color::DarkGray)
+                    .bg(Color::Rgb(60, 60, 120))
+                    .fg(Color::White)
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("▶ ");
@@ -174,44 +422,70 @@ impl UI {
         let selected_position = list_state.selected().unwrap_or(0);
         f.render_stateful_widget(list, area, list_state);
 
-        // Render scrollbar if needed
-        if area.height > 3 {
+        // Enhanced scrollbar
+        if area.height > 4 && !config_items.is_empty() {
             let scrollbar = Scrollbar::default()
                 .orientation(ScrollbarOrientation::VerticalRight)
-                .begin_symbol(Some("↑"))
-                .end_symbol(Some("↓"));
+                .begin_symbol(if is_focused { Some("▲") } else { Some("↑") })
+                .end_symbol(if is_focused { Some("▼") } else { Some("↓") })
+                .track_symbol(Some("│"))
+                .thumb_symbol("█");
 
             let scrollbar_area = Rect {
-                x: area.x + area.width - 1,
+                x: area.x + area.width.saturating_sub(1),
                 y: area.y + 1,
                 width: 1,
-                height: area.height - 2,
+                height: area.height.saturating_sub(2),
             };
 
             let mut scrollbar_state = ScrollbarState::default()
-                .content_length(items_len)
+                .content_length(config_items.len())
                 .position(selected_position);
 
             f.render_stateful_widget(scrollbar, scrollbar_area, &mut scrollbar_state);
         }
+
+        // Show description at bottom of focused panel
+        if is_focused && !config_items.is_empty() {
+            if let Some(selected_item) = config_items.get(selected_position) {
+                let desc_area = Rect {
+                    x: area.x + 1,
+                    y: area.y + area.height.saturating_sub(2),
+                    width: area.width.saturating_sub(2),
+                    height: 1,
+                };
+
+                let description = Paragraph::new(selected_item.description.as_str())
+                    .style(Style::default().fg(Color::Rgb(180, 180, 180)).italic())
+                    .wrap(Wrap { trim: true });
+
+                f.render_widget(description, desc_area);
+            }
+        }
     }
 
-    fn render_footer(&self, f: &mut Frame, area: Rect) {
+    fn render_enhanced_footer(&self, f: &mut Frame, area: Rect) {
         let help_text = vec![
-            Span::styled("Tab/→", Style::default().fg(Color::Yellow)),
-            Span::raw(": Next panel | "),
-            Span::styled("Shift+Tab/←", Style::default().fg(Color::Yellow)),
-            Span::raw(": Previous panel | "),
-            Span::styled("↑↓", Style::default().fg(Color::Yellow)),
-            Span::raw(": Navigate | "),
-            Span::styled("Enter", Style::default().fg(Color::Yellow)),
-            Span::raw(": Select | "),
-            Span::styled("R", Style::default().fg(Color::Yellow)),
-            Span::raw(": Reload | "),
-            Span::styled("S", Style::default().fg(Color::Yellow)),
-            Span::raw(": Save | "),
-            Span::styled("Q/Esc", Style::default().fg(Color::Yellow)),
-            Span::raw(": Quit"),
+            Span::styled("Tab/→", Style::default().fg(Color::Rgb(255, 215, 0)).bold()),
+            Span::styled(" Next ", Style::default().fg(Color::Gray)),
+            Span::raw("• "),
+            Span::styled("Shift+Tab/←", Style::default().fg(Color::Rgb(255, 215, 0)).bold()),
+            Span::styled(" Previous ", Style::default().fg(Color::Gray)),
+            Span::raw("• "),
+            Span::styled("↑↓", Style::default().fg(Color::Rgb(100, 255, 100)).bold()),
+            Span::styled(" Navigate ", Style::default().fg(Color::Gray)),
+            Span::raw("• "),
+            Span::styled("Enter", Style::default().fg(Color::Rgb(255, 100, 255)).bold()),
+            Span::styled(" Edit ", Style::default().fg(Color::Gray)),
+            Span::raw("• "),
+            Span::styled("S", Style::default().fg(Color::Rgb(100, 255, 255)).bold()),
+            Span::styled(" Save ", Style::default().fg(Color::Gray)),
+            Span::raw("• "),
+            Span::styled("R", Style::default().fg(Color::Rgb(255, 165, 0)).bold()),
+            Span::styled(" Reload ", Style::default().fg(Color::Gray)),
+            Span::raw("• "),
+            Span::styled("Q/Esc", Style::default().fg(Color::Rgb(255, 100, 100)).bold()),
+            Span::styled(" Quit", Style::default().fg(Color::Gray)),
         ];
 
         let footer = Paragraph::new(Line::from(help_text))
@@ -219,11 +493,300 @@ impl UI {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::White))
-                    .border_type(BorderType::Rounded),
+                    .border_style(Style::default().fg(Color::Rgb(150, 150, 200)))
+                    .border_type(BorderType::Rounded)
+                    .title(" Controls ")
+                    .title_style(Style::default().fg(Color::Cyan).bold()),
             );
 
         f.render_widget(footer, area);
+    }
+
+    fn render_popup(&self, f: &mut Frame, area: Rect) {
+        let popup_area = Self::centered_rect(50, 25, area);
+        
+        let popup_content = vec![
+            Line::from(vec![
+                Span::styled("ℹ️ Information", Style::default().fg(Color::Cyan).bold()),
+            ]),
+            Line::from(""),
+            Line::from(self.popup_message.as_str()),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("Press ", Style::default().fg(Color::Gray)),
+                Span::styled("Enter", Style::default().fg(Color::Yellow).bold()),
+                Span::styled(" to continue", Style::default().fg(Color::Gray)),
+            ]),
+        ];
+
+        let popup = Paragraph::new(popup_content)
+            .alignment(Alignment::Center)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Cyan))
+                    .border_type(BorderType::Double)
+                    .title(" Message ")
+                    .title_style(Style::default().fg(Color::Cyan).bold())
+            )
+            .wrap(Wrap { trim: true });
+
+        f.render_widget(Clear, popup_area);
+        f.render_widget(popup, popup_area);
+    }
+
+    fn render_save_dialog(&self, f: &mut Frame, area: Rect) {
+        let popup_area = Self::centered_rect(60, 30, area);
+        
+        let popup_content = vec![
+            Line::from(vec![
+                Span::styled("💾 Save Configuration", Style::default().fg(Color::Green).bold()),
+            ]),
+            Line::from(""),
+            Line::from("Save current configuration changes to file?"),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("⚠️ Warning: ", Style::default().fg(Color::Yellow).bold()),
+                Span::raw("This will overwrite your existing configuration"),
+            ]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("Y", Style::default().fg(Color::Green).bold()),
+                Span::styled(" - Yes, save  ", Style::default().fg(Color::Gray)),
+                Span::styled("N", Style::default().fg(Color::Red).bold()),
+                Span::styled(" - No, cancel", Style::default().fg(Color::Gray)),
+            ]),
+        ];
+
+        let popup = Paragraph::new(popup_content)
+            .alignment(Alignment::Center)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Green))
+                    .border_type(BorderType::Double)
+                    .title(" Save Confirmation ")
+                    .title_style(Style::default().fg(Color::Green).bold())
+            )
+            .wrap(Wrap { trim: true });
+
+        f.render_widget(Clear, popup_area);
+        f.render_widget(popup, popup_area);
+    }
+
+    fn render_reload_dialog(&self, f: &mut Frame, area: Rect) {
+        let popup_area = Self::centered_rect(60, 30, area);
+        
+        let popup_content = vec![
+            Line::from(vec![
+                Span::styled("🔄 Reload Configuration", Style::default().fg(Color::Blue).bold()),
+            ]),
+            Line::from(""),
+            Line::from("Reload configuration from Hyprland?"),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("⚠️ Warning: ", Style::default().fg(Color::Yellow).bold()),
+                Span::raw("This will discard any unsaved changes"),
+            ]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("Y", Style::default().fg(Color::Green).bold()),
+                Span::styled(" - Yes, reload  ", Style::default().fg(Color::Gray)),
+                Span::styled("N", Style::default().fg(Color::Red).bold()),
+                Span::styled(" - No, cancel", Style::default().fg(Color::Gray)),
+            ]),
+        ];
+
+        let popup = Paragraph::new(popup_content)
+            .alignment(Alignment::Center)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Blue))
+                    .border_type(BorderType::Double)
+                    .title(" Reload Confirmation ")
+                    .title_style(Style::default().fg(Color::Blue).bold())
+            )
+            .wrap(Wrap { trim: true });
+
+        f.render_widget(Clear, popup_area);
+        f.render_widget(popup, popup_area);
+    }
+
+    fn render_edit_popup(&self, f: &mut Frame, area: Rect) {
+        let popup_area = Self::centered_rect(70, 40, area);
+        
+        // Get the item being edited
+        let (panel, key) = if let Some((panel, key)) = &self.editing_item {
+            (panel.clone(), key.clone())
+        } else {
+            return;
+        };
+
+        let config_items = self.config_items.get(&panel).cloned().unwrap_or_default();
+        let item = config_items.iter().find(|item| item.key == key);
+        
+        if let Some(item) = item {
+            let mut popup_content = vec![
+                Line::from(vec![
+                    Span::styled("✏️ Edit Configuration", Style::default().fg(Color::Magenta).bold()),
+                ]),
+                Line::from(""),
+                Line::from(vec![
+                    Span::styled("Key: ", Style::default().fg(Color::Cyan).bold()),
+                    Span::raw(&item.key),
+                ]),
+                Line::from(vec![
+                    Span::styled("Description: ", Style::default().fg(Color::Yellow).bold()),
+                    Span::raw(&item.description),
+                ]),
+                Line::from(""),
+            ];
+
+            // Render different edit modes
+            match &self.edit_mode {
+                EditMode::Text { current_value, cursor_pos } => {
+                    popup_content.push(Line::from(vec![
+                        Span::styled("Value: ", Style::default().fg(Color::Green).bold()),
+                        Span::raw(current_value),
+                        if *cursor_pos < current_value.len() {
+                            Span::styled("|", Style::default().fg(Color::White).bold())
+                        } else {
+                            Span::styled("|", Style::default().fg(Color::White).bold())
+                        },
+                    ]));
+                }
+                EditMode::Boolean { current_value } => {
+                    popup_content.push(Line::from(vec![
+                        Span::styled("Value: ", Style::default().fg(Color::Green).bold()),
+                        Span::styled(
+                            if *current_value { "true" } else { "false" },
+                            Style::default().fg(if *current_value { Color::Green } else { Color::Red }).bold()
+                        ),
+                    ]));
+                    popup_content.push(Line::from(""));
+                    popup_content.push(Line::from("Press Space to toggle"));
+                }
+                EditMode::Select { options, selected } => {
+                    popup_content.push(Line::from(vec![
+                        Span::styled("Options:", Style::default().fg(Color::Green).bold()),
+                    ]));
+                    for (i, option) in options.iter().enumerate() {
+                        let style = if i == *selected {
+                            Style::default().fg(Color::Yellow).bold()
+                        } else {
+                            Style::default().fg(Color::Gray)
+                        };
+                        popup_content.push(Line::from(vec![
+                            Span::raw("  "),
+                            if i == *selected {
+                                Span::styled("▶ ", Style::default().fg(Color::Yellow).bold())
+                            } else {
+                                Span::raw("  ")
+                            },
+                            Span::styled(option, style),
+                        ]));
+                    }
+                }
+                EditMode::Slider { current_value, min, max, .. } => {
+                    let percentage = (current_value - min) / (max - min);
+                    let bar_width = 40;
+                    let filled = (percentage * bar_width as f32) as usize;
+                    
+                    let mut bar = String::new();
+                    bar.push('[');
+                    for i in 0..bar_width {
+                        if i < filled {
+                            bar.push('█');
+                        } else {
+                            bar.push('░');
+                        }
+                    }
+                    bar.push(']');
+                    
+                    let current_value_str = current_value.to_string();
+                    let min_str = format!("Min: {}", min);
+                    let max_str = format!("Max: {}", max);
+                    
+                    popup_content.push(Line::from(vec![
+                        Span::styled("Value: ", Style::default().fg(Color::Green).bold()),
+                        Span::styled(current_value_str, Style::default().fg(Color::Cyan).bold()),
+                    ]));
+                    popup_content.push(Line::from(""));
+                    popup_content.push(Line::from(vec![
+                        Span::styled(bar, Style::default().fg(Color::Blue)),
+                    ]));
+                    popup_content.push(Line::from(vec![
+                        Span::styled(min_str, Style::default().fg(Color::Gray)),
+                        Span::raw("  "),
+                        Span::styled(max_str, Style::default().fg(Color::Gray)),
+                    ]));
+                }
+                EditMode::None => {
+                    popup_content.push(Line::from(vec![
+                        Span::styled("Current Value: ", Style::default().fg(Color::Green).bold()),
+                        Span::raw(&item.value),
+                    ]));
+                }
+            }
+
+            // Add suggestions if available
+            if !item.suggestions.is_empty() {
+                popup_content.push(Line::from(""));
+                popup_content.push(Line::from(vec![
+                    Span::styled("Suggestions: ", Style::default().fg(Color::Yellow).bold()),
+                ]));
+                let suggestions_text = item.suggestions.join(", ");
+                popup_content.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled(suggestions_text, Style::default().fg(Color::Rgb(200, 200, 200))),
+                ]));
+            }
+
+            popup_content.push(Line::from(""));
+            popup_content.push(Line::from(vec![
+                Span::styled("Enter", Style::default().fg(Color::Green).bold()),
+                Span::styled(" - Apply  ", Style::default().fg(Color::Gray)),
+                Span::styled("Esc", Style::default().fg(Color::Red).bold()),
+                Span::styled(" - Cancel", Style::default().fg(Color::Gray)),
+            ]));
+
+            let popup = Paragraph::new(popup_content)
+                .alignment(Alignment::Left)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(Color::Magenta))
+                        .border_type(BorderType::Double)
+                        .title(" Edit Value ")
+                        .title_style(Style::default().fg(Color::Magenta).bold())
+                )
+                .wrap(Wrap { trim: true });
+
+            f.render_widget(Clear, popup_area);
+            f.render_widget(popup, popup_area);
+        }
+    }
+
+    // Helper function to create centered rectangles for popups
+    fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+        let popup_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Percentage((100 - percent_y) / 2),
+                Constraint::Percentage(percent_y),
+                Constraint::Percentage((100 - percent_y) / 2),
+            ])
+            .split(r);
+
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage((100 - percent_x) / 2),
+                Constraint::Percentage(percent_x),
+                Constraint::Percentage((100 - percent_x) / 2),
+            ])
+            .split(popup_layout[1])[1]
     }
 
     fn get_static_panel_items(panel: FocusedPanel) -> Vec<ListItem<'static>> {
@@ -322,7 +885,7 @@ impl UI {
     }
 
     fn get_panel_items_count(&self, panel: FocusedPanel) -> usize {
-        Self::get_static_panel_items(panel).len()
+        self.config_items.get(&panel).map(|items| items.len()).unwrap_or(0)
     }
 
     fn get_list_state_mut(&mut self, panel: FocusedPanel) -> &mut ListState {

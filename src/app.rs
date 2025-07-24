@@ -21,7 +21,7 @@ pub enum AppState {
     Quitting,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FocusedPanel {
     General,
     Input,
