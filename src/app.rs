@@ -156,6 +156,24 @@ impl App {
     }
 
     async fn handle_key_event(&mut self, key: KeyCode) -> Result<()> {
+        // Handle popup states first
+        if self.ui.show_save_dialog {
+            return self.handle_save_dialog_key(key).await;
+        }
+        
+        if self.ui.show_reload_dialog {
+            return self.handle_reload_dialog_key(key).await;
+        }
+        
+        if self.ui.show_popup {
+            return self.handle_popup_key(key).await;
+        }
+        
+        if self.ui.edit_mode != crate::ui::EditMode::None {
+            return self.handle_edit_key(key).await;
+        }
+
+        // Handle normal navigation
         match key {
             KeyCode::Char('q') | KeyCode::Esc => {
                 self.state = AppState::Quitting;
@@ -173,15 +191,177 @@ impl App {
                 self.ui.scroll_down(self.focused_panel);
             }
             KeyCode::Enter => {
-                self.ui.toggle_selection(self.focused_panel).await?;
+                self.ui.start_editing(self.focused_panel).await?;
             }
-            KeyCode::Char('r') => {
-                self.reload_config().await?;
+            KeyCode::Char('r') | KeyCode::Char('R') => {
+                self.ui.show_reload_dialog = true;
             }
-            KeyCode::Char('s') => {
-                self.save_config().await?;
+            KeyCode::Char('s') | KeyCode::Char('S') => {
+                self.ui.show_save_dialog = true;
             }
             _ => {}
+        }
+        Ok(())
+    }
+
+    async fn handle_save_dialog_key(&mut self, key: KeyCode) -> Result<()> {
+        match key {
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                self.ui.show_save_dialog = false;
+                self.save_config().await?;
+                self.ui.show_popup = true;
+                self.ui.popup_message = "Configuration saved successfully!".to_string();
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                self.ui.show_save_dialog = false;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    async fn handle_reload_dialog_key(&mut self, key: KeyCode) -> Result<()> {
+        match key {
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                self.ui.show_reload_dialog = false;
+                self.reload_config().await?;
+                self.ui.show_popup = true;
+                self.ui.popup_message = "Configuration reloaded successfully!".to_string();
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                self.ui.show_reload_dialog = false;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    async fn handle_popup_key(&mut self, key: KeyCode) -> Result<()> {
+        match key {
+            KeyCode::Enter | KeyCode::Esc => {
+                self.ui.show_popup = false;
+                self.ui.popup_message.clear();
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    async fn handle_edit_key(&mut self, key: KeyCode) -> Result<()> {
+        use crate::ui::EditMode;
+        
+        match &mut self.ui.edit_mode {
+            EditMode::Text { current_value, cursor_pos } => {
+                match key {
+                    KeyCode::Enter => {
+                        self.ui.apply_edit().await?;
+                        self.ui.show_popup = true;
+                        self.ui.popup_message = "Value updated successfully!".to_string();
+                    }
+                    KeyCode::Esc => {
+                        self.ui.cancel_edit();
+                    }
+                    KeyCode::Char(c) => {
+                        current_value.insert(*cursor_pos, c);
+                        *cursor_pos += 1;
+                    }
+                    KeyCode::Backspace => {
+                        if *cursor_pos > 0 {
+                            *cursor_pos -= 1;
+                            current_value.remove(*cursor_pos);
+                        }
+                    }
+                    KeyCode::Left => {
+                        if *cursor_pos > 0 {
+                            *cursor_pos -= 1;
+                        }
+                    }
+                    KeyCode::Right => {
+                        if *cursor_pos < current_value.len() {
+                            *cursor_pos += 1;
+                        }
+                    }
+                    KeyCode::Home => {
+                        *cursor_pos = 0;
+                    }
+                    KeyCode::End => {
+                        *cursor_pos = current_value.len();
+                    }
+                    _ => {}
+                }
+            }
+            EditMode::Boolean { current_value } => {
+                match key {
+                    KeyCode::Enter => {
+                        self.ui.apply_edit().await?;
+                        self.ui.show_popup = true;
+                        self.ui.popup_message = "Value updated successfully!".to_string();
+                    }
+                    KeyCode::Esc => {
+                        self.ui.cancel_edit();
+                    }
+                    KeyCode::Char(' ') => {
+                        *current_value = !*current_value;
+                    }
+                    _ => {}
+                }
+            }
+            EditMode::Select { options, selected } => {
+                match key {
+                    KeyCode::Enter => {
+                        self.ui.apply_edit().await?;
+                        self.ui.show_popup = true;
+                        self.ui.popup_message = "Value updated successfully!".to_string();
+                    }
+                    KeyCode::Esc => {
+                        self.ui.cancel_edit();
+                    }
+                    KeyCode::Up => {
+                        if *selected > 0 {
+                            *selected -= 1;
+                        } else {
+                            *selected = options.len() - 1;
+                        }
+                    }
+                    KeyCode::Down => {
+                        if *selected < options.len() - 1 {
+                            *selected += 1;
+                        } else {
+                            *selected = 0;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            EditMode::Slider { current_value, min, max, step } => {
+                match key {
+                    KeyCode::Enter => {
+                        self.ui.apply_edit().await?;
+                        self.ui.show_popup = true;
+                        self.ui.popup_message = "Value updated successfully!".to_string();
+                    }
+                    KeyCode::Esc => {
+                        self.ui.cancel_edit();
+                    }
+                    KeyCode::Left => {
+                        *current_value = (*current_value - *step).max(*min);
+                    }
+                    KeyCode::Right => {
+                        *current_value = (*current_value + *step).min(*max);
+                    }
+                    KeyCode::Home => {
+                        *current_value = *min;
+                    }
+                    KeyCode::End => {
+                        *current_value = *max;
+                    }
+                    _ => {}
+                }
+            }
+            EditMode::None => {
+                // This shouldn't happen, but handle it gracefully
+                self.ui.cancel_edit();
+            }
         }
         Ok(())
     }
