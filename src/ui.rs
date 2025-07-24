@@ -554,6 +554,114 @@ impl UI {
         self.config_items.insert(FocusedPanel::Misc, misc_items);
     }
 
+    pub fn collect_all_config_changes(&self) -> std::collections::HashMap<String, String> {
+        let mut options = std::collections::HashMap::new();
+        
+        // Collect changes from all panels
+        for (panel, items) in &self.config_items {
+            for item in items {
+                // Only include items that have hyprctl mappings (skip keybinds/rules for now)
+                if let Some(hypr_key) = self.get_hyprctl_key(panel, &item.key) {
+                    options.insert(hypr_key, item.value.clone());
+                }
+            }
+        }
+        
+        options
+    }
+
+    pub fn collect_keybinds(&self) -> Vec<String> {
+        let mut keybinds = Vec::new();
+        
+        if let Some(bind_items) = self.config_items.get(&crate::app::FocusedPanel::Binds) {
+            for item in bind_items {
+                // Convert display format back to config format
+                // Display format: "SUPER + q → exec [kitty]"
+                // Config format: "bind = SUPER, q, exec, kitty"
+                
+                if let Some(config_line) = self.display_value_to_config_line(&item.value) {
+                    keybinds.push(config_line);
+                }
+            }
+        }
+        
+        keybinds
+    }
+
+    pub fn collect_window_rules(&self) -> Vec<String> {
+        let mut rules = Vec::new();
+        
+        if let Some(rule_items) = self.config_items.get(&crate::app::FocusedPanel::WindowRules) {
+            for item in rule_items {
+                rules.push(item.value.clone());
+            }
+        }
+        
+        rules
+    }
+
+    pub fn collect_layer_rules(&self) -> Vec<String> {
+        let mut rules = Vec::new();
+        
+        if let Some(rule_items) = self.config_items.get(&crate::app::FocusedPanel::LayerRules) {
+            for item in rule_items {
+                rules.push(item.value.clone());
+            }
+        }
+        
+        rules
+    }
+
+    fn display_value_to_config_line(&self, display_value: &str) -> Option<String> {
+        // Convert display format "SUPER + q → exec [kitty]" back to config format
+        // "bind = SUPER, q, exec, kitty"
+        
+        if let Some((key_part, command_part)) = display_value.split_once(" → ") {
+            let key_part = key_part.trim();
+            let command_part = command_part.trim();
+            
+            // Parse key part "SUPER + q" or just "q"
+            let (modifiers, key) = if key_part.contains(" + ") {
+                let parts: Vec<&str> = key_part.split(" + ").collect();
+                let key = parts.last().unwrap_or(&"").to_string();
+                let mods = parts[..parts.len()-1].join(" ");
+                (mods, key)
+            } else {
+                (String::new(), key_part.to_string())
+            };
+            
+            // Parse command part "exec [kitty]" or "killactive"
+            let (dispatcher, args) = if command_part.contains(" [") && command_part.ends_with(']') {
+                let parts: Vec<&str> = command_part.splitn(2, " [").collect();
+                let dispatcher = parts[0].to_string();
+                let args = parts.get(1)
+                    .map(|s| s.trim_end_matches(']'))
+                    .unwrap_or("")
+                    .to_string();
+                (dispatcher, Some(args))
+            } else {
+                (command_part.to_string(), None)
+            };
+            
+            // Format as config line
+            let mod_part = if modifiers.is_empty() {
+                String::new()
+            } else {
+                format!("{}, ", modifiers)
+            };
+            
+            let args_part = if let Some(args) = args {
+                format!(", {}", args)
+            } else {
+                String::new()
+            };
+            
+            Some(format!("bind = {}{}, {}{}", mod_part, key, dispatcher, args_part))
+        } else {
+            None
+        }
+    }
+
     pub async fn load_current_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
         // Try to load from hyprctl first
         let _hyprctl_success = match hyprctl.get_all_options().await {
@@ -582,9 +690,15 @@ impl UI {
         
         // If hyprctl failed for rules, try to load from config file
         if !binds_success || !window_rules_success || !layer_rules_success {
+            eprintln!("Debug: hyprctl failed (binds: {}, window_rules: {}, layer_rules: {}), trying config file", 
+                      binds_success, window_rules_success, layer_rules_success);
             if let Err(e) = self.load_from_config_file().await {
                 eprintln!("Warning: Failed to load from config file: {}", e);
+                // As a last resort, add placeholder data
+                self.add_fallback_placeholder_data();
             }
+        } else {
+            eprintln!("Debug: hyprctl succeeded, not loading from config file");
         }
         
         Ok(())
@@ -592,7 +706,13 @@ impl UI {
 
     async fn load_from_config_file(&mut self) -> Result<(), anyhow::Error> {
         let config = crate::config::Config::load().await?;
+        eprintln!("Debug: Config loaded, path: {:?}", config.hyprland_config_path);
+        
         let hyprland_config = config.parse_hyprland_config().await?;
+        eprintln!("Debug: Parsed {} keybinds, {} window rules, {} layer rules", 
+                  hyprland_config.keybinds.len(), 
+                  hyprland_config.window_rules.len(), 
+                  hyprland_config.layer_rules.len());
         
         // Load keybinds from config file
         if !hyprland_config.keybinds.is_empty() {
@@ -682,6 +802,71 @@ impl UI {
         }
         
         Ok(())
+    }
+    
+    fn add_fallback_placeholder_data(&mut self) {
+        // Add placeholder keybinds if not already present
+        if !self.config_items.contains_key(&FocusedPanel::Binds) {
+            let placeholder_binds = vec![
+                ConfigItem {
+                    key: "bind_example_1".to_string(),
+                    value: "SUPER + Q → exec [kitty]".to_string(),
+                    description: "Example: Open terminal with Super+Q".to_string(),
+                    data_type: ConfigDataType::String,
+                    suggestions: vec!["exec".to_string(), "killactive".to_string(), "togglefloating".to_string()],
+                },
+                ConfigItem {
+                    key: "hyprland_not_running".to_string(),
+                    value: "⚠️  Configuration not available".to_string(),
+                    description: "Could not load from hyprctl or config file".to_string(),
+                    data_type: ConfigDataType::String,
+                    suggestions: vec![],
+                },
+            ];
+            self.config_items.insert(FocusedPanel::Binds, placeholder_binds);
+        }
+        
+        // Add placeholder window rules if not already present
+        if !self.config_items.contains_key(&FocusedPanel::WindowRules) {
+            let placeholder_rules = vec![
+                ConfigItem {
+                    key: "window_rule_example_1".to_string(),
+                    value: "windowrule = float, ^(kitty)$".to_string(),
+                    description: "Example: Float kitty terminal windows".to_string(),
+                    data_type: ConfigDataType::String,
+                    suggestions: self.get_window_rule_suggestions(),
+                },
+                ConfigItem {
+                    key: "hyprland_not_running".to_string(),
+                    value: "⚠️  Configuration not available".to_string(),
+                    description: "Could not load from hyprctl or config file".to_string(),
+                    data_type: ConfigDataType::String,
+                    suggestions: vec![],
+                },
+            ];
+            self.config_items.insert(FocusedPanel::WindowRules, placeholder_rules);
+        }
+        
+        // Add placeholder layer rules if not already present
+        if !self.config_items.contains_key(&FocusedPanel::LayerRules) {
+            let placeholder_layer_rules = vec![
+                ConfigItem {
+                    key: "layer_rule_example_1".to_string(),
+                    value: "layerrule = blur, waybar".to_string(),
+                    description: "Example: Apply blur effect to waybar".to_string(),
+                    data_type: ConfigDataType::String,
+                    suggestions: self.get_layer_rule_suggestions(),
+                },
+                ConfigItem {
+                    key: "hyprland_not_running".to_string(),
+                    value: "⚠️  Configuration not available".to_string(),
+                    description: "Could not load from hyprctl or config file".to_string(),
+                    data_type: ConfigDataType::String,
+                    suggestions: vec![],
+                },
+            ];
+            self.config_items.insert(FocusedPanel::LayerRules, placeholder_layer_rules);
+        }
     }
 
     fn populate_config_from_options(&mut self, options: std::collections::HashMap<String, String>) {
@@ -1098,6 +1283,13 @@ impl UI {
     async fn load_binds_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
         match hyprctl.get_binds().await {
             Ok(keybinds) => {
+                // If hyprctl succeeds but returns empty keybinds, treat it as a failure
+                // This likely means Hyprland isn't running and we should try config file parsing
+                if keybinds.is_empty() {
+                    eprintln!("Debug: hyprctl.get_binds() returned empty results, treating as failure");
+                    return Err(anyhow::anyhow!("No keybinds found via hyprctl"));
+                }
+                
                 let mut bind_items = Vec::new();
                 
                 for (i, keybind) in keybinds.iter().enumerate() {
@@ -1116,42 +1308,16 @@ impl UI {
                     });
                 }
                 
-                // If we got keybinds, replace the default ones
-                if !bind_items.is_empty() {
-                    self.config_items.insert(FocusedPanel::Binds, bind_items);
-                }
+                // Insert the loaded keybinds
+                self.config_items.insert(FocusedPanel::Binds, bind_items);
+                Ok(())
             }
             Err(e) => {
                 eprintln!("Warning: Failed to load keybinds: {}", e);
-                // Create informative placeholder when Hyprland is not available
-                let placeholder_binds = vec![
-                    ConfigItem {
-                        key: "bind_example_1".to_string(),
-                        value: "SUPER + Q → exec [kitty]".to_string(),
-                        description: "Example: Open terminal with Super+Q".to_string(),
-                        data_type: ConfigDataType::String,
-                        suggestions: vec!["exec".to_string(), "killactive".to_string(), "togglefloating".to_string()],
-                    },
-                    ConfigItem {
-                        key: "bind_example_2".to_string(),
-                        value: "SUPER + C → killactive".to_string(),
-                        description: "Example: Close window with Super+C".to_string(),
-                        data_type: ConfigDataType::String,
-                        suggestions: vec!["killactive".to_string(), "exec".to_string(), "workspace".to_string()],
-                    },
-                    ConfigItem {
-                        key: "hyprland_not_running".to_string(),
-                        value: "⚠️  Hyprland not detected".to_string(),
-                        description: "Start Hyprland to see actual keybinds".to_string(),
-                        data_type: ConfigDataType::String,
-                        suggestions: vec![],
-                    },
-                ];
-                self.config_items.insert(FocusedPanel::Binds, placeholder_binds);
+                // Don't insert placeholder data here - let the config file loading handle it
+                return Err(e);
             }
         }
-        
-        Ok(())
     }
 
     fn get_keybind_suggestions(&self, dispatcher: &str) -> Vec<String> {
@@ -1192,6 +1358,13 @@ impl UI {
     async fn load_window_rules_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
         match hyprctl.get_window_rules().await {
             Ok(window_rules) => {
+                // If hyprctl succeeds but returns empty window rules, treat it as a failure
+                // This likely means Hyprland isn't running and we should try config file parsing
+                if window_rules.is_empty() {
+                    eprintln!("Debug: hyprctl.get_window_rules() returned empty results, treating as failure");
+                    return Err(anyhow::anyhow!("No window rules found via hyprctl"));
+                }
+                
                 let mut rule_items = Vec::new();
                 
                 for (i, rule) in window_rules.iter().enumerate() {
@@ -1218,46 +1391,27 @@ impl UI {
                     });
                 }
                 
-                // Replace the default window rules with actual ones
-                if !rule_items.is_empty() {
-                    self.config_items.insert(FocusedPanel::WindowRules, rule_items);
-                }
+                // Insert the loaded window rules
+                self.config_items.insert(FocusedPanel::WindowRules, rule_items);
+                Ok(())
             }
             Err(e) => {
                 eprintln!("Warning: Failed to load window rules: {}", e);
-                // Create informative placeholders when Hyprland is not available
-                let placeholder_rules = vec![
-                    ConfigItem {
-                        key: "window_rule_example_1".to_string(),
-                        value: "windowrule = float, ^(kitty)$".to_string(),
-                        description: "Example: Float kitty terminal windows".to_string(),
-                        data_type: ConfigDataType::String,
-                        suggestions: self.get_window_rule_suggestions(),
-                    },
-                    ConfigItem {
-                        key: "window_rule_example_2".to_string(),
-                        value: "windowrule = workspace 2, ^(firefox)$".to_string(),
-                        description: "Example: Send Firefox to workspace 2".to_string(),
-                        data_type: ConfigDataType::String,
-                        suggestions: self.get_window_rule_suggestions(),
-                    },
-                    ConfigItem {
-                        key: "hyprland_not_running".to_string(),
-                        value: "⚠️  Hyprland not detected".to_string(),
-                        description: "Start Hyprland to see actual window rules".to_string(),
-                        data_type: ConfigDataType::String,
-                        suggestions: vec![],
-                    },
-                ];
-                self.config_items.insert(FocusedPanel::WindowRules, placeholder_rules);
+                return Err(e);
             }
         }
-        Ok(())
     }
 
     async fn load_layer_rules_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
         match hyprctl.get_layer_rules().await {
             Ok(layer_rules) => {
+                // If hyprctl succeeds but returns empty layer rules, treat it as a failure
+                // This likely means Hyprland isn't running and we should try config file parsing
+                if layer_rules.is_empty() {
+                    eprintln!("Debug: hyprctl.get_layer_rules() returned empty results, treating as failure");
+                    return Err(anyhow::anyhow!("No layer rules found via hyprctl"));
+                }
+                
                 let mut rule_items = Vec::new();
                 
                 for (i, rule) in layer_rules.iter().enumerate() {
@@ -1305,48 +1459,15 @@ impl UI {
                     }
                 }
 
-                // Replace the default layer rules with actual ones (including workspace rules)
-                if !rule_items.is_empty() {
-                    self.config_items.insert(FocusedPanel::LayerRules, rule_items);
-                }
+                // Insert the loaded layer rules
+                self.config_items.insert(FocusedPanel::LayerRules, rule_items);
+                Ok(())
             }
             Err(e) => {
                 eprintln!("Warning: Failed to load layer rules: {}", e);
-                // Create informative placeholders when Hyprland is not available
-                let placeholder_layer_rules = vec![
-                    ConfigItem {
-                        key: "layer_rule_example_1".to_string(),
-                        value: "layerrule = blur, waybar".to_string(),
-                        description: "Example: Apply blur effect to waybar".to_string(),
-                        data_type: ConfigDataType::String,
-                        suggestions: self.get_layer_rule_suggestions(),
-                    },
-                    ConfigItem {
-                        key: "layer_rule_example_2".to_string(),
-                        value: "layerrule = ignorezero, notifications".to_string(),
-                        description: "Example: Ignore zero alpha pixels in notifications".to_string(),
-                        data_type: ConfigDataType::String,
-                        suggestions: self.get_layer_rule_suggestions(),
-                    },
-                    ConfigItem {
-                        key: "workspace_rule_example_1".to_string(),
-                        value: "workspace = 1, monitor:DP-1".to_string(),
-                        description: "Example: Assign workspace 1 to DP-1 monitor".to_string(),
-                        data_type: ConfigDataType::String,
-                        suggestions: self.get_workspace_rule_suggestions(),
-                    },
-                    ConfigItem {
-                        key: "hyprland_not_running".to_string(),
-                        value: "⚠️  Hyprland not detected".to_string(),
-                        description: "Start Hyprland to see actual layer and workspace rules".to_string(),
-                        data_type: ConfigDataType::String,
-                        suggestions: vec![],
-                    },
-                ];
-                self.config_items.insert(FocusedPanel::LayerRules, placeholder_layer_rules);
+                return Err(e);
             }
         }
-        Ok(())
     }
 
     fn parse_hyprctl_value(raw_value: &str) -> Option<String> {

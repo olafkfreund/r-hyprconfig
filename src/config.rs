@@ -145,6 +145,30 @@ impl Config {
         Ok(backup_path)
     }
 
+    pub async fn save_hyprland_config_with_rules(&self, options: &HashMap<String, String>, keybinds: &[String], window_rules: &[String], layer_rules: &[String]) -> Result<()> {
+        if self.nixos_mode {
+            return self.save_nixos_config(options).await;
+        }
+
+        // Backup current config
+        let _backup_path = self.backup_config().await?;
+
+        // Read current config
+        let current_content = async_fs::read_to_string(&self.hyprland_config_path)
+            .await
+            .unwrap_or_else(|_| String::new());
+
+        // Parse and update config with options, keybinds, and rules
+        let updated_content = self.update_config_content_with_rules(&current_content, options, keybinds, window_rules, layer_rules)?;
+
+        // Write updated config
+        async_fs::write(&self.hyprland_config_path, updated_content)
+            .await
+            .context("Failed to write hyprland config")?;
+
+        Ok(())
+    }
+
     #[allow(dead_code)]
     pub async fn save_hyprland_config(&self, options: &HashMap<String, String>) -> Result<()> {
         if self.nixos_mode {
@@ -191,6 +215,52 @@ impl Config {
         println!("Please import this file in your NixOS configuration or copy the settings manually.");
 
         Ok(())
+    }
+
+    fn update_config_content_with_rules(&self, content: &str, options: &HashMap<String, String>, keybinds: &[String], window_rules: &[String], layer_rules: &[String]) -> Result<String> {
+        let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+        
+        // Remove existing keybinds, window rules, and layer rules
+        lines.retain(|line| {
+            let trimmed = line.trim();
+            !trimmed.starts_with("bind") && 
+            !trimmed.starts_with("windowrule") && 
+            !trimmed.starts_with("layerrule") &&
+            !trimmed.starts_with("blurls")
+        });
+        
+        // Update configuration options using existing method
+        let content_with_options = self.update_config_content(&lines.join("\n"), options)?;
+        let mut updated_lines: Vec<String> = content_with_options.lines().map(|s| s.to_string()).collect();
+        
+        // Add new keybinds
+        if !keybinds.is_empty() {
+            updated_lines.push(String::new());
+            updated_lines.push("# Keybinds".to_string());
+            for keybind in keybinds {
+                updated_lines.push(keybind.clone());
+            }
+        }
+        
+        // Add new window rules
+        if !window_rules.is_empty() {
+            updated_lines.push(String::new());
+            updated_lines.push("# Window Rules".to_string());
+            for rule in window_rules {
+                updated_lines.push(rule.clone());
+            }
+        }
+        
+        // Add new layer rules
+        if !layer_rules.is_empty() {
+            updated_lines.push(String::new());
+            updated_lines.push("# Layer Rules".to_string());
+            for rule in layer_rules {
+                updated_lines.push(rule.clone());
+            }
+        }
+        
+        Ok(updated_lines.join("\n"))
     }
 
     #[allow(dead_code)]
@@ -374,10 +444,12 @@ impl HyprlandConfigFile {
                 continue;
             }
             
-            // Parse keybinds
+            // Parse keybinds  
             if line.starts_with("bind") {
                 if let Some(keybind) = Self::parse_keybind_line(line) {
                     keybinds.push(keybind);
+                } else {
+                    eprintln!("Debug: Failed to parse keybind line: {}", line);
                 }
             }
             // Parse window rules

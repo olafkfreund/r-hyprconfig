@@ -15,6 +15,10 @@ struct Cli {
     /// Enable debug mode
     #[arg(short, long)]
     debug: bool,
+    
+    /// Test save functionality without running TUI
+    #[arg(long)]
+    test_save: bool,
 }
 
 #[tokio::main]
@@ -22,7 +26,12 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     
     let mut app = App::new(cli.debug).await?;
-    app.run().await?;
+    
+    if cli.test_save {
+        app.test_save_functionality().await?;
+    } else {
+        app.run().await?;
+    }
     
     Ok(())
 }

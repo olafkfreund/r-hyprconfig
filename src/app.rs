@@ -91,6 +91,25 @@ pub struct App {
 }
 
 impl App {
+    pub async fn test_save_functionality(&mut self) -> Result<()> {
+        eprintln!("=== Testing Save Functionality ===");
+        
+        // Collect all data that would be saved
+        let config_changes = self.ui.collect_all_config_changes();
+        let keybinds = self.ui.collect_keybinds();
+        let window_rules = self.ui.collect_window_rules();
+        let layer_rules = self.ui.collect_layer_rules();
+        
+        eprintln!("Config changes: {}", config_changes.len());
+        eprintln!("Keybinds: {}", keybinds.len());
+        eprintln!("Window rules: {}", window_rules.len());
+        eprintln!("Layer rules: {}", layer_rules.len());
+        
+        // Test the save without actually writing to avoid modifying user's config
+        eprintln!("=== Save functionality test complete ===");
+        Ok(())
+    }
+
     pub async fn new(debug: bool) -> Result<Self> {
         let config = Config::load().await?;
         
@@ -536,18 +555,68 @@ impl App {
     }
 
     async fn reload_config(&mut self) -> Result<()> {
+        // Reload the application's own config
         self.config = Config::load().await?;
         
-        // Also reload current configuration from hyprctl
+        // If Hyprland is running, try to reload its configuration first
+        if self.hyprctl.is_hyprland_running().await {
+            match self.hyprctl.reload_config().await {
+                Ok(()) => {
+                    eprintln!("Hyprland configuration reloaded from file");
+                }
+                Err(e) => {
+                    eprintln!("Warning: Failed to reload Hyprland configuration: {}", e);
+                }
+            }
+        }
+        
+        // Reload current configuration into UI (from hyprctl or config file)
         if let Err(e) = self.ui.load_current_config(&self.hyprctl).await {
-            eprintln!("Warning: Failed to reload Hyprland configuration: {}", e);
+            eprintln!("Warning: Failed to reload UI configuration: {}", e);
         }
         
         Ok(())
     }
 
     async fn save_config(&mut self) -> Result<()> {
+        // Save the application's own config
         self.config.save().await?;
+        
+        // Collect all configuration changes from the UI
+        let config_changes = self.ui.collect_all_config_changes();
+        let keybinds = self.ui.collect_keybinds();
+        let window_rules = self.ui.collect_window_rules();
+        let layer_rules = self.ui.collect_layer_rules();
+        
+        // Check if we have any changes to save
+        let has_changes = !config_changes.is_empty() || !keybinds.is_empty() || 
+                         !window_rules.is_empty() || !layer_rules.is_empty();
+        
+        if has_changes {
+            // Save changes to the actual Hyprland config file
+            self.config.save_hyprland_config_with_rules(&config_changes, &keybinds, &window_rules, &layer_rules).await?;
+            
+            eprintln!("Saved {} config options, {} keybinds, {} window rules, {} layer rules", 
+                     config_changes.len(), keybinds.len(), window_rules.len(), layer_rules.len());
+            
+            // If Hyprland is running, try to reload the configuration
+            if self.hyprctl.is_hyprland_running().await {
+                match self.hyprctl.reload_config().await {
+                    Ok(()) => {
+                        eprintln!("Hyprland configuration reloaded successfully");
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Failed to reload Hyprland configuration: {}", e);
+                        eprintln!("Changes saved to config file but may require manual restart");
+                    }
+                }
+            } else {
+                eprintln!("Hyprland not running - changes saved to config file");
+            }
+        } else {
+            eprintln!("No configuration changes to save");
+        }
+        
         Ok(())
     }
 }
