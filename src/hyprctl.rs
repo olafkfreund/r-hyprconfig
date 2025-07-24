@@ -100,6 +100,7 @@ pub struct HyprlandKeybind {
 }
 
 impl HyprlandKeybind {
+    #[allow(dead_code)]
     pub fn new(modifiers: Vec<String>, key: String, dispatcher: String, args: Option<String>) -> Self {
         Self {
             modifiers,
@@ -110,6 +111,7 @@ impl HyprlandKeybind {
         }
     }
 
+    #[allow(dead_code)]
     pub fn to_hyprland_config(&self) -> String {
         let mod_string = if self.modifiers.is_empty() {
             String::new()
@@ -150,6 +152,7 @@ impl HyprlandKeybind {
 }
 
 pub struct HyprCtl {
+    #[allow(dead_code)]
     socket_path: Option<String>,
 }
 
@@ -453,11 +456,13 @@ impl HyprCtl {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn add_keybind(&self, bind: &HyprlandKeybind) -> Result<()> {
         let bind_command = bind.to_hyprland_config();
         self.dispatch(&format!("keyword {}", bind_command)).await
     }
 
+    #[allow(dead_code)]
     pub async fn remove_keybind(&self, modifiers: &[String], key: &str) -> Result<()> {
         let mod_string = if modifiers.is_empty() {
             String::new()
@@ -469,6 +474,7 @@ impl HyprCtl {
         self.dispatch(&unbind_command).await
     }
 
+    #[allow(dead_code)]
     pub async fn reload_config(&self) -> Result<()> {
         let output = AsyncCommand::new("hyprctl")
             .arg("reload")
@@ -484,6 +490,7 @@ impl HyprCtl {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub async fn dispatch(&self, command: &str) -> Result<()> {
         let output = AsyncCommand::new("hyprctl")
             .arg("dispatch")
@@ -500,6 +507,7 @@ impl HyprCtl {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub async fn get_version(&self) -> Result<String> {
         let output = AsyncCommand::new("hyprctl")
             .arg("version")
@@ -516,6 +524,7 @@ impl HyprCtl {
         Ok(stdout.trim().to_string())
     }
 
+    #[allow(dead_code)]
     pub async fn is_hyprland_running(&self) -> bool {
         AsyncCommand::new("hyprctl")
             .arg("version")
@@ -650,16 +659,19 @@ impl HyprCtl {
         Ok(rules)
     }
 
+    #[allow(dead_code)]
     pub async fn add_window_rule(&self, rule: &str) -> Result<()> {
         let command = format!("keyword windowrule {}", rule);
         self.dispatch(&command).await
     }
 
+    #[allow(dead_code)]
     pub async fn add_layer_rule(&self, rule: &str) -> Result<()> {
         let command = format!("keyword layerrule {}", rule);
         self.dispatch(&command).await
     }
 
+    #[allow(dead_code)]
     pub async fn add_workspace_rule(&self, rule: &str) -> Result<()> {
         let command = format!("keyword workspace {}", rule);
         self.dispatch(&command).await

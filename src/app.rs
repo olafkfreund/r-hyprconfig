@@ -63,6 +63,7 @@ impl FocusedPanel {
         }
     }
 
+    #[allow(dead_code)]
     pub fn as_str(self) -> &'static str {
         match self {
             FocusedPanel::General => "General",

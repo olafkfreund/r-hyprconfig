@@ -1638,6 +1638,7 @@ impl UI {
         f.render_stateful_widget(list, area, current_list_state);
     }
 
+    #[allow(dead_code)]
     fn render_enhanced_panel(&mut self, f: &mut Frame, area: Rect, panel: FocusedPanel, focused_panel: FocusedPanel) {
         let is_focused = focused_panel == panel;
         
@@ -2191,6 +2192,7 @@ impl UI {
             .split(popup_layout[1])[1]
     }
 
+    #[allow(dead_code)]
     fn get_static_panel_items(panel: FocusedPanel) -> Vec<ListItem<'static>> {
         match panel {
             FocusedPanel::General => vec![
@@ -2290,6 +2292,7 @@ impl UI {
         self.config_items.get(&panel).map(|items| items.len()).unwrap_or(0)
     }
 
+    #[allow(dead_code)]
     fn get_list_state_mut(&mut self, panel: FocusedPanel) -> &mut ListState {
         match panel {
             FocusedPanel::General => &mut self.general_list_state,
@@ -2456,6 +2459,7 @@ impl UI {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn apply_edit(&mut self) -> Result<(), anyhow::Error> {
         if let Some((panel, key)) = &self.editing_item.clone() {
             let new_value = match &self.edit_mode {
