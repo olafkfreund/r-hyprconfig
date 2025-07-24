@@ -1,0 +1,22 @@
+[package]
+name = "r-hyprconfig"
+version = "0.1.0"
+edition = "2021"
+description = "A modern TUI for managing Hyprland configuration"
+license = "MIT"
+repository = "https://github.com/olafkfreund/r-hyprconfig"
+keywords = ["hyprland", "tui", "configuration", "rust"]
+categories = ["command-line-utilities", "config"]
+
+[dependencies]
+ratatui = "0.28"
+crossterm = "0.28"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+toml = "0.8"
+dirs = "5.0"
+chrono = { version = "0.4", features = ["serde"] }
+which = "6.0"

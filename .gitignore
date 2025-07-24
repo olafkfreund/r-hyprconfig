@@ -1,0 +1,105 @@
+# Rust artifacts
+/target/
+*.rs.bk
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Nix artifacts
+result
+result-*
+.direnv/
+.envrc.local
+
+# devenv artifacts
+.devenv/
+devenv.local.nix
+
+# Cargo artifacts
+**/*.rs.bk
+.cargo/
+
+# Application artifacts
+.r-hyprconfig/
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Runtime artifacts
+*.pid
+*.lock
+!flake.lock
+
+# Test artifacts
+coverage/
+*.profraw
+
+# Documentation artifacts
+/docs/book/
+/docs/target/
+
+# Build artifacts
+dist/
+build/
+
+# Container artifacts
+.dockerignore.local
+
+# Local development files
+.env
+.env.local
+local.toml
+dev.toml
+
+# Benchmarking results
+benchmark_results/
+*.bench
+
+# Flamegraph output
+flamegraph.svg
+perf.data*
+
+# macOS
+*.dSYM/
+
+# Windows
+*.exe
+*.pdb
+
+# Generated configuration files (examples/tests)
+examples/generated_*
+test_configs/
+
+# Backup files
+*.backup.*
+*~
+
+# Editor artifacts
+.#*
+\#*#
+
+# Logs
+*.log
+logs/
+
+# Coverage reports
+tarpaulin-report.html
+cobertura.xml
+lcov.info

@@ -1,0 +1,320 @@
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use tokio::fs as async_fs;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Config {
+    pub hyprland_config_path: PathBuf,
+    pub backup_enabled: bool,
+    pub auto_save: bool,
+    pub nixos_mode: bool,
+    pub current_values: HashMap<String, String>,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            hyprland_config_path: Self::default_hyprland_config_path(),
+            backup_enabled: true,
+            auto_save: false,
+            nixos_mode: Self::detect_nixos(),
+            current_values: HashMap::new(),
+        }
+    }
+}
+
+impl Config {
+    pub async fn load() -> Result<Self> {
+        let config_path = Self::get_config_path()?;
+        
+        if config_path.exists() {
+            let content = async_fs::read_to_string(&config_path)
+                .await
+                .context("Failed to read config file")?;
+            
+            let mut config: Config = toml::from_str(&content)
+                .context("Failed to parse config file")?;
+            
+            // Ensure hyprland config path exists
+            config.validate_hyprland_config_path().await?;
+            
+            Ok(config)
+        } else {
+            let config = Self::default();
+            config.save().await?;
+            Ok(config)
+        }
+    }
+
+    pub async fn save(&self) -> Result<()> {
+        let config_path = Self::get_config_path()?;
+        
+        // Create config directory if it doesn't exist
+        if let Some(parent) = config_path.parent() {
+            async_fs::create_dir_all(parent)
+                .await
+                .context("Failed to create config directory")?;
+        }
+
+        let content = toml::to_string_pretty(self)
+            .context("Failed to serialize config")?;
+        
+        async_fs::write(&config_path, content)
+            .await
+            .context("Failed to write config file")?;
+
+        Ok(())
+    }
+
+    fn get_config_path() -> Result<PathBuf> {
+        let config_dir = dirs::config_dir()
+            .context("Failed to get config directory")?
+            .join("r-hyprconfig");
+        
+        Ok(config_dir.join("config.toml"))
+    }
+
+    fn default_hyprland_config_path() -> PathBuf {
+        if let Some(config_dir) = dirs::config_dir() {
+            config_dir.join("hypr").join("hyprland.conf")
+        } else {
+            PathBuf::from("~/.config/hypr/hyprland.conf")
+        }
+    }
+
+    fn detect_nixos() -> bool {
+        // Check if we're running on NixOS
+        Path::new("/etc/NIXOS").exists() || 
+        std::env::var("NIX_STORE").is_ok() ||
+        which::which("nixos-rebuild").is_ok()
+    }
+
+    async fn validate_hyprland_config_path(&mut self) -> Result<()> {
+        if !self.hyprland_config_path.exists() {
+            // Try to find hyprland.conf in common locations
+            let possible_paths = vec![
+                dirs::config_dir().map(|d| d.join("hypr").join("hyprland.conf")),
+                Some(PathBuf::from("/etc/hypr/hyprland.conf")),
+                dirs::home_dir().map(|d| d.join(".config").join("hypr").join("hyprland.conf")),
+            ];
+
+            for path in possible_paths.into_iter().flatten() {
+                if path.exists() {
+                    self.hyprland_config_path = path;
+                    return Ok(());
+                }
+            }
+
+            // If no config found, create a basic one
+            self.create_default_hyprland_config().await?;
+        }
+        Ok(())
+    }
+
+    async fn create_default_hyprland_config(&self) -> Result<()> {
+        if let Some(parent) = self.hyprland_config_path.parent() {
+            async_fs::create_dir_all(parent)
+                .await
+                .context("Failed to create hyprland config directory")?;
+        }
+
+        let default_config = include_str!("../templates/default_hyprland.conf");
+        async_fs::write(&self.hyprland_config_path, default_config)
+            .await
+            .context("Failed to create default hyprland config")?;
+
+        Ok(())
+    }
+
+    pub async fn backup_config(&self) -> Result<PathBuf> {
+        if !self.backup_enabled {
+            return Ok(self.hyprland_config_path.clone());
+        }
+
+        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+        let backup_path = self.hyprland_config_path
+            .with_extension(format!("conf.backup.{}", timestamp));
+
+        async_fs::copy(&self.hyprland_config_path, &backup_path)
+            .await
+            .context("Failed to create backup")?;
+
+        Ok(backup_path)
+    }
+
+    pub async fn save_hyprland_config(&self, options: &HashMap<String, String>) -> Result<()> {
+        if self.nixos_mode {
+            return self.save_nixos_config(options).await;
+        }
+
+        // Backup current config
+        let _backup_path = self.backup_config().await?;
+
+        // Read current config
+        let current_content = async_fs::read_to_string(&self.hyprland_config_path)
+            .await
+            .unwrap_or_else(|_| String::new());
+
+        // Parse and update config
+        let updated_content = self.update_config_content(&current_content, options)?;
+
+        // Write updated config
+        async_fs::write(&self.hyprland_config_path, updated_content)
+            .await
+            .context("Failed to write hyprland config")?;
+
+        Ok(())
+    }
+
+    async fn save_nixos_config(&self, _options: &HashMap<String, String>) -> Result<()> {
+        // For NixOS, we can't directly modify the config file
+        // Instead, we'll save the configuration to a separate file
+        // that can be imported or referenced in the NixOS configuration
+        
+        let nixos_config_path = self.hyprland_config_path
+            .parent()
+            .unwrap_or(Path::new("/tmp"))
+            .join("r-hyprconfig-generated.conf");
+
+        let content = self.generate_nixos_config_content(_options)?;
+        
+        async_fs::write(&nixos_config_path, content)
+            .await
+            .context("Failed to write NixOS compatible config")?;
+
+        println!("NixOS mode: Configuration saved to {:?}", nixos_config_path);
+        println!("Please import this file in your NixOS configuration or copy the settings manually.");
+
+        Ok(())
+    }
+
+    fn update_config_content(&self, content: &str, options: &HashMap<String, String>) -> Result<String> {
+        let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+        let mut updated_options = HashMap::new();
+
+        // Update existing options - collect indices first to avoid borrow checker issues
+        let mut line_updates = Vec::new();
+        for (i, line) in lines.iter().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.starts_with('#') || trimmed.is_empty() {
+                continue;
+            }
+
+            // Check if this line contains a configuration option we want to update
+            for (option, value) in options {
+                let option_prefix = if option.contains(':') {
+                    option.split_once(':').unwrap().1
+                } else {
+                    option.as_str()
+                };
+
+                if trimmed.starts_with(&format!("{} =", option_prefix)) ||
+                   trimmed.starts_with(&format!("{}=", option_prefix)) {
+                    line_updates.push((i, format!("    {} = {}", option_prefix, value)));
+                    updated_options.insert(option.clone(), value.clone());
+                    break;
+                }
+            }
+        }
+        
+        // Apply the collected updates
+        for (i, new_line) in line_updates {
+            lines[i] = new_line;
+        }
+
+        // Add options that weren't found in the existing config  
+        for (option, value) in options {
+            if !updated_options.contains_key(option) {
+                let _section = if let Some((section, option_name)) = option.split_once(':') {
+                    // Find or create section
+                    let section_header = format!("{} {{", section);
+                    let mut section_found = false;
+                    let mut section_end = lines.len();
+
+                    for (i, line) in lines.iter().enumerate() {
+                        if line.trim().starts_with(&section_header) {
+                            section_found = true;
+                            // Find the end of this section
+                            for (j, inner_line) in lines.iter().enumerate().skip(i + 1) {
+                                if inner_line.trim() == "}" {
+                                    section_end = j;
+                                    break;
+                                }
+                            }
+                            break;
+                        }
+                    }
+
+                    if section_found {
+                        lines.insert(section_end, format!("    {} = {}", option_name, value));
+                    } else {
+                        // Create new section
+                        lines.push(String::new());
+                        lines.push(format!("{} {{", section));
+                        lines.push(format!("    {} = {}", option_name, value));
+                        lines.push("}".to_string());
+                    }
+                    section
+                } else {
+                    // Global option
+                    lines.push(format!("{} = {}", option, value));
+                    "global"
+                };
+                
+                updated_options.insert(option.clone(), value.clone());
+            }
+        }
+
+        Ok(lines.join("\n"))
+    }
+
+    fn generate_nixos_config_content(&self, options: &HashMap<String, String>) -> Result<String> {
+        let mut content = String::new();
+        content.push_str("# Generated by r-hyprconfig for NixOS\n");
+        content.push_str("# Import this in your NixOS configuration or copy settings manually\n\n");
+
+        // Group options by section
+        let mut sections: HashMap<String, Vec<(String, String)>> = HashMap::new();
+        
+        for (option, value) in options {
+            if let Some((section, option_name)) = option.split_once(':') {
+                sections.entry(section.to_string())
+                    .or_default()
+                    .push((option_name.to_string(), value.clone()));
+            } else {
+                sections.entry("general".to_string())
+                    .or_default()
+                    .push((option.clone(), value.clone()));
+            }
+        }
+
+        // Generate NixOS-style configuration
+        for (section, options) in sections {
+            content.push_str(&format!("{} = {{\n", section));
+            for (option, value) in options {
+                content.push_str(&format!("  {} = {};\n", option, value));
+            }
+            content.push_str("};\n\n");
+        }
+
+        Ok(content)
+    }
+
+    pub fn set_current_value(&mut self, key: String, value: String) {
+        self.current_values.insert(key, value);
+    }
+
+    pub fn get_current_value(&self, key: &str) -> Option<&String> {
+        self.current_values.get(key)
+    }
+
+    pub fn is_nixos_mode(&self) -> bool {
+        self.nixos_mode
+    }
+
+    pub fn set_nixos_mode(&mut self, enabled: bool) {
+        self.nixos_mode = enabled;
+    }
+}

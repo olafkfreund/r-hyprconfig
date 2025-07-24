@@ -1,0 +1,103 @@
+{
+  "name": "R-Hyprconfig Development",
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "target": "development"
+  },
+  
+  // Container configuration
+  "runArgs": [
+    "--cap-add=SYS_PTRACE",
+    "--security-opt=seccomp=unconfined"
+  ],
+  
+  // Set environment variables
+  "containerEnv": {
+    "RUST_LOG": "debug",
+    "RUST_BACKTRACE": "1"
+  },
+  
+  // VS Code specific settings
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "rust-analyzer.checkOnSave.command": "clippy",
+        "rust-analyzer.cargo.features": "all",
+        "rust-analyzer.procMacro.enable": true,
+        "editor.formatOnSave": true,
+        "editor.rulers": [80, 100],
+        "files.trimTrailingWhitespace": true,
+        "files.insertFinalNewline": true
+      },
+      
+      "extensions": [
+        // Rust development
+        "rust-lang.rust-analyzer",
+        "vadimcn.vscode-lldb",
+        "serayuzgur.crates",
+        
+        // Nix support
+        "bbenoist.Nix",
+        "jnoortheen.nix-ide",
+        
+        // General development
+        "ms-vscode.vscode-json",
+        "ms-vscode.vscode-typescript-next",
+        "bradlc.vscode-tailwindcss",
+        "esbenp.prettier-vscode",
+        
+        // Git integration
+        "eamodio.gitlens",
+        "github.vscode-pull-request-github",
+        
+        // Development tools
+        "ms-vscode.cmake-tools",
+        "ms-vscode.cpptools",
+        "formulahendry.code-runner",
+        
+        // Markdown and documentation
+        "yzhang.markdown-all-in-one",
+        "davidanson.vscode-markdownlint",
+        
+        // TOML support
+        "tamasfe.even-better-toml",
+        
+        // Themes and appearance
+        "zhuangtongfa.material-theme",
+        "pkief.material-icon-theme"
+      ]
+    }
+  },
+  
+  // Port forwarding (if needed for web interfaces)
+  "forwardPorts": [],
+  
+  // Post-create command
+  "postCreateCommand": "nix develop --command bash -c 'echo \"🦀 Development environment ready!\" && exec bash'",
+  
+  // User configuration
+  "remoteUser": "dev",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "workspaceFolder": "/workspace",
+  
+  // Lifecycle scripts
+  "initializeCommand": "echo '🚀 Initializing R-Hyprconfig devcontainer...'",
+  "onCreateCommand": "echo '📦 Setting up development environment...'",
+  "updateContentCommand": "nix flake update",
+  "postStartCommand": "echo '✅ Development environment is ready!'",
+  
+  // Features (alternative to custom dockerfile)
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  
+  // Mount the Docker socket if needed
+  "mounts": [
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+  ],
+  
+  // Shutdown action
+  "shutdownAction": "stopContainer"
+}

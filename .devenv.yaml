@@ -1,0 +1,86 @@
+# devenv configuration for r-hyprconfig
+# https://devenv.sh/reference/options/
+
+allowUnfree: false
+
+inputs:
+  nixpkgs:
+    url: github:NixOS/nixpkgs/nixos-unstable
+  
+  rust-overlay:
+    url: github:oxalica/rust-overlay
+    follows: nixpkgs
+
+# Git configuration
+git:
+  hooks:
+    pre-commit:
+      - rustfmt
+      - clippy
+      - cargo-audit
+    pre-push:
+      - cargo-test
+
+# Environment variables
+env:
+  RUST_LOG: debug
+  RUST_BACKTRACE: "1"
+  CARGO_HOME: ".cargo"
+  RUSTUP_HOME: ".rustup"
+
+# Development processes (optional - managed by devenv)
+processes:
+  # File watcher for automatic rebuilds
+  watch:
+    command: "cargo watch -x 'check --all-targets'"
+    foreground: false
+  
+  # Documentation server
+  docs:
+    command: "cargo doc --open --no-deps"
+    foreground: false
+
+# Task definitions
+tasks:
+  build:
+    description: "Build the r-hyprconfig application"
+    command: "cargo build --release"
+  
+  dev:
+    description: "Run in development mode with hot reload"
+    command: "cargo watch -x 'run -- --debug'"
+  
+  test:
+    description: "Run all tests"
+    command: "cargo test --all-targets --all-features"
+  
+  lint:
+    description: "Run formatting and linting"
+    command: |
+      cargo fmt --all --check
+      cargo clippy --all-targets --all-features -- -D warnings
+  
+  audit:
+    description: "Run security audit"
+    command: "cargo audit"
+  
+  clean:
+    description: "Clean build artifacts"
+    command: "cargo clean"
+  
+  deps:
+    description: "Check for outdated dependencies"
+    command: "cargo outdated"
+
+# Documentation
+documentation:
+  readme: "README.md"
+  changelog: "CHANGELOG.md"
+  
+# Project metadata
+project:
+  name: "r-hyprconfig"
+  description: "A modern TUI for managing Hyprland configuration"
+  version: "0.1.0"
+  license: "MIT"
+  homepage: "https://github.com/olafkfreund/r-hyprconfig"
