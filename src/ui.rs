@@ -3,8 +3,8 @@ use ratatui::{
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
     widgets::{
-        Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, 
-        Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
+        Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Scrollbar,
+        ScrollbarOrientation, ScrollbarState, Wrap,
     },
     Frame,
 };
@@ -14,11 +14,24 @@ use crate::app::FocusedPanel;
 #[derive(Debug, Clone, PartialEq)]
 pub enum EditMode {
     None,
-    Text { current_value: String, cursor_pos: usize },
-    Slider { current_value: f32, min: f32, max: f32, step: f32 },
-    Select { options: Vec<String>, selected: usize },
-    Boolean { current_value: bool },
-    Keybind { 
+    Text {
+        current_value: String,
+        cursor_pos: usize,
+    },
+    Slider {
+        current_value: f32,
+        min: f32,
+        max: f32,
+        step: f32,
+    },
+    Select {
+        options: Vec<String>,
+        selected: usize,
+    },
+    Boolean {
+        current_value: bool,
+    },
+    Keybind {
         modifiers: Vec<String>,
         key: String,
         dispatcher: String,
@@ -83,10 +96,10 @@ pub struct UI {
     pub window_rules_list_state: ListState,
     pub layer_rules_list_state: ListState,
     pub misc_list_state: ListState,
-    
+
     // Tab navigation state
     pub current_tab: FocusedPanel,
-    
+
     // New editing state
     pub edit_mode: EditMode,
     pub editing_item: Option<(FocusedPanel, String)>,
@@ -94,15 +107,15 @@ pub struct UI {
     pub popup_message: String,
     pub show_save_dialog: bool,
     pub show_reload_dialog: bool,
-    
+
     // Search functionality
     pub search_mode: bool,
     pub search_query: String,
     pub search_cursor: usize,
-    
+
     // Theme
     pub theme: crate::theme::Theme,
-    
+
     pub config_items: std::collections::HashMap<FocusedPanel, Vec<ConfigItem>>,
 }
 
@@ -118,24 +131,24 @@ impl UI {
             window_rules_list_state: ListState::default(),
             layer_rules_list_state: ListState::default(),
             misc_list_state: ListState::default(),
-            
+
             current_tab: FocusedPanel::General,
-            
+
             edit_mode: EditMode::None,
             editing_item: None,
             show_popup: false,
             popup_message: String::new(),
             show_save_dialog: false,
             show_reload_dialog: false,
-            
+
             // Search functionality
             search_mode: false,
             search_query: String::new(),
             search_cursor: 0,
-            
+
             // Theme
             theme: crate::theme::Theme::default(),
-            
+
             config_items: std::collections::HashMap::new(),
         };
 
@@ -185,29 +198,47 @@ impl UI {
     }
 
     fn initialize_default_config_items(&mut self) {
-        
         // General configuration items
         let general_items = vec![
             ConfigItem {
                 key: "gaps_in".to_string(),
                 value: "5".to_string(),
                 description: "Inner gaps between windows".to_string(),
-                data_type: ConfigDataType::Integer { min: Some(0), max: Some(50) },
-                suggestions: vec!["0".to_string(), "5".to_string(), "10".to_string(), "15".to_string()],
+                data_type: ConfigDataType::Integer {
+                    min: Some(0),
+                    max: Some(50),
+                },
+                suggestions: vec![
+                    "0".to_string(),
+                    "5".to_string(),
+                    "10".to_string(),
+                    "15".to_string(),
+                ],
             },
             ConfigItem {
                 key: "gaps_out".to_string(),
                 value: "20".to_string(),
                 description: "Outer gaps between windows and monitor edges".to_string(),
-                data_type: ConfigDataType::Integer { min: Some(0), max: Some(100) },
+                data_type: ConfigDataType::Integer {
+                    min: Some(0),
+                    max: Some(100),
+                },
                 suggestions: vec!["10".to_string(), "20".to_string(), "30".to_string()],
             },
             ConfigItem {
                 key: "border_size".to_string(),
                 value: "2".to_string(),
                 description: "Border width in pixels".to_string(),
-                data_type: ConfigDataType::Integer { min: Some(0), max: Some(20) },
-                suggestions: vec!["1".to_string(), "2".to_string(), "3".to_string(), "4".to_string()],
+                data_type: ConfigDataType::Integer {
+                    min: Some(0),
+                    max: Some(20),
+                },
+                suggestions: vec![
+                    "1".to_string(),
+                    "2".to_string(),
+                    "3".to_string(),
+                    "4".to_string(),
+                ],
             },
             ConfigItem {
                 key: "col.active_border".to_string(),
@@ -216,7 +247,7 @@ impl UI {
                 data_type: ConfigDataType::Color,
                 suggestions: vec![
                     "rgba(33ccffee)".to_string(),
-                    "rgba(ff6666ee)".to_string(), 
+                    "rgba(ff6666ee)".to_string(),
                     "rgba(66ff66ee)".to_string(),
                     "rgba(ffff66ee)".to_string(),
                     "rgb(255, 255, 255)".to_string(),
@@ -241,8 +272,14 @@ impl UI {
                 key: "kb_layout".to_string(),
                 value: "us".to_string(),
                 description: "Keyboard layout".to_string(),
-                data_type: ConfigDataType::Keyword { 
-                    options: vec!["us".to_string(), "uk".to_string(), "de".to_string(), "fr".to_string(), "es".to_string()] 
+                data_type: ConfigDataType::Keyword {
+                    options: vec![
+                        "us".to_string(),
+                        "uk".to_string(),
+                        "de".to_string(),
+                        "fr".to_string(),
+                        "es".to_string(),
+                    ],
                 },
                 suggestions: vec!["us".to_string(), "uk".to_string(), "de".to_string()],
             },
@@ -250,8 +287,13 @@ impl UI {
                 key: "follow_mouse".to_string(),
                 value: "1".to_string(),
                 description: "Follow mouse focus behavior".to_string(),
-                data_type: ConfigDataType::Keyword { 
-                    options: vec!["0".to_string(), "1".to_string(), "2".to_string(), "3".to_string()] 
+                data_type: ConfigDataType::Keyword {
+                    options: vec![
+                        "0".to_string(),
+                        "1".to_string(),
+                        "2".to_string(),
+                        "3".to_string(),
+                    ],
                 },
                 suggestions: vec!["0".to_string(), "1".to_string(), "2".to_string()],
             },
@@ -259,7 +301,10 @@ impl UI {
                 key: "sensitivity".to_string(),
                 value: "0.0".to_string(),
                 description: "Mouse sensitivity (-1.0 to 1.0)".to_string(),
-                data_type: ConfigDataType::Float { min: Some(-1.0), max: Some(1.0) },
+                data_type: ConfigDataType::Float {
+                    min: Some(-1.0),
+                    max: Some(1.0),
+                },
                 suggestions: vec!["-0.5".to_string(), "0.0".to_string(), "0.5".to_string()],
             },
         ];
@@ -270,8 +315,16 @@ impl UI {
                 key: "rounding".to_string(),
                 value: "10".to_string(),
                 description: "Window corner rounding in pixels".to_string(),
-                data_type: ConfigDataType::Integer { min: Some(0), max: Some(50) },
-                suggestions: vec!["0".to_string(), "5".to_string(), "10".to_string(), "15".to_string()],
+                data_type: ConfigDataType::Integer {
+                    min: Some(0),
+                    max: Some(50),
+                },
+                suggestions: vec![
+                    "0".to_string(),
+                    "5".to_string(),
+                    "10".to_string(),
+                    "15".to_string(),
+                ],
             },
             ConfigItem {
                 key: "blur.enabled".to_string(),
@@ -284,15 +337,25 @@ impl UI {
                 key: "blur.size".to_string(),
                 value: "3".to_string(),
                 description: "Blur effect radius".to_string(),
-                data_type: ConfigDataType::Integer { min: Some(1), max: Some(20) },
-                suggestions: vec!["1".to_string(), "3".to_string(), "5".to_string(), "8".to_string()],
+                data_type: ConfigDataType::Integer {
+                    min: Some(1),
+                    max: Some(20),
+                },
+                suggestions: vec![
+                    "1".to_string(),
+                    "3".to_string(),
+                    "5".to_string(),
+                    "8".to_string(),
+                ],
             },
         ];
 
-        self.config_items.insert(FocusedPanel::General, general_items);
+        self.config_items
+            .insert(FocusedPanel::General, general_items);
         self.config_items.insert(FocusedPanel::Input, input_items);
-        self.config_items.insert(FocusedPanel::Decoration, decoration_items);
-        
+        self.config_items
+            .insert(FocusedPanel::Decoration, decoration_items);
+
         // Animations configuration items
         let animations_items = vec![
             ConfigItem {
@@ -361,14 +424,20 @@ impl UI {
                 key: "gestures.workspace_swipe_fingers".to_string(),
                 value: "3".to_string(),
                 description: "Number of fingers for workspace swipe".to_string(),
-                data_type: ConfigDataType::Integer { min: Some(3), max: Some(5) },
+                data_type: ConfigDataType::Integer {
+                    min: Some(3),
+                    max: Some(5),
+                },
                 suggestions: vec!["3".to_string(), "4".to_string(), "5".to_string()],
             },
             ConfigItem {
                 key: "gestures.workspace_swipe_distance".to_string(),
                 value: "300".to_string(),
                 description: "Distance in pixels to trigger swipe".to_string(),
-                data_type: ConfigDataType::Integer { min: Some(100), max: Some(1000) },
+                data_type: ConfigDataType::Integer {
+                    min: Some(100),
+                    max: Some(1000),
+                },
                 suggestions: vec!["200".to_string(), "300".to_string(), "400".to_string()],
             },
             ConfigItem {
@@ -386,8 +455,13 @@ impl UI {
                 key: "$mainMod".to_string(),
                 value: "SUPER".to_string(),
                 description: "Main modifier key for keybindings".to_string(),
-                data_type: ConfigDataType::Keyword { 
-                    options: vec!["SUPER".to_string(), "ALT".to_string(), "CTRL".to_string(), "SHIFT".to_string()] 
+                data_type: ConfigDataType::Keyword {
+                    options: vec![
+                        "SUPER".to_string(),
+                        "ALT".to_string(),
+                        "CTRL".to_string(),
+                        "SHIFT".to_string(),
+                    ],
                 },
                 suggestions: vec!["SUPER".to_string(), "ALT".to_string(), "CTRL".to_string()],
             },
@@ -556,25 +630,29 @@ impl UI {
                 key: "misc.vrr".to_string(),
                 value: "0".to_string(),
                 description: "Variable Refresh Rate (0=off, 1=on, 2=fullscreen only)".to_string(),
-                data_type: ConfigDataType::Keyword { 
-                    options: vec!["0".to_string(), "1".to_string(), "2".to_string()] 
+                data_type: ConfigDataType::Keyword {
+                    options: vec!["0".to_string(), "1".to_string(), "2".to_string()],
                 },
                 suggestions: vec!["0".to_string(), "1".to_string(), "2".to_string()],
             },
         ];
 
         // Insert all configuration items
-        self.config_items.insert(FocusedPanel::Animations, animations_items);
-        self.config_items.insert(FocusedPanel::Gestures, gestures_items);
+        self.config_items
+            .insert(FocusedPanel::Animations, animations_items);
+        self.config_items
+            .insert(FocusedPanel::Gestures, gestures_items);
         self.config_items.insert(FocusedPanel::Binds, binds_items);
-        self.config_items.insert(FocusedPanel::WindowRules, window_rules_items);
-        self.config_items.insert(FocusedPanel::LayerRules, layer_rules_items);
+        self.config_items
+            .insert(FocusedPanel::WindowRules, window_rules_items);
+        self.config_items
+            .insert(FocusedPanel::LayerRules, layer_rules_items);
         self.config_items.insert(FocusedPanel::Misc, misc_items);
     }
 
     pub fn collect_all_config_changes(&self) -> std::collections::HashMap<String, String> {
         let mut options = std::collections::HashMap::new();
-        
+
         // Collect changes from all panels
         for (panel, items) in &self.config_items {
             for item in items {
@@ -584,75 +662,79 @@ impl UI {
                 }
             }
         }
-        
+
         options
     }
 
     pub fn collect_keybinds(&self) -> Vec<String> {
         let mut keybinds = Vec::new();
-        
+
         if let Some(bind_items) = self.config_items.get(&crate::app::FocusedPanel::Binds) {
             for item in bind_items {
                 // Convert display format back to config format
                 // Display format: "SUPER + q → exec [kitty]"
                 // Config format: "bind = SUPER, q, exec, kitty"
-                
+
                 if let Some(config_line) = self.display_value_to_config_line(&item.value) {
                     keybinds.push(config_line);
                 }
             }
         }
-        
+
         keybinds
     }
 
     pub fn collect_window_rules(&self) -> Vec<String> {
         let mut rules = Vec::new();
-        
-        if let Some(rule_items) = self.config_items.get(&crate::app::FocusedPanel::WindowRules) {
+
+        if let Some(rule_items) = self
+            .config_items
+            .get(&crate::app::FocusedPanel::WindowRules)
+        {
             for item in rule_items {
                 rules.push(item.value.clone());
             }
         }
-        
+
         rules
     }
 
     pub fn collect_layer_rules(&self) -> Vec<String> {
         let mut rules = Vec::new();
-        
+
         if let Some(rule_items) = self.config_items.get(&crate::app::FocusedPanel::LayerRules) {
             for item in rule_items {
                 rules.push(item.value.clone());
             }
         }
-        
+
         rules
     }
 
     fn display_value_to_config_line(&self, display_value: &str) -> Option<String> {
         // Convert display format "SUPER + q → exec [kitty]" back to config format
         // "bind = SUPER, q, exec, kitty"
-        
+
         if let Some((key_part, command_part)) = display_value.split_once(" → ") {
             let key_part = key_part.trim();
             let command_part = command_part.trim();
-            
+
             // Parse key part "SUPER + q" or just "q"
             let (modifiers, key) = if key_part.contains(" + ") {
                 let parts: Vec<&str> = key_part.split(" + ").collect();
                 let key = parts.last().unwrap_or(&"").to_string();
-                let mods = parts[..parts.len()-1].join(" ");
+                let mods = parts[..parts.len() - 1].join(" ");
                 (mods, key)
             } else {
                 (String::new(), key_part.to_string())
             };
-            
+
             // Parse command part "exec [kitty]" or "killactive"
             let (dispatcher, args) = if command_part.contains(" [") && command_part.ends_with(']') {
                 let parts: Vec<&str> = command_part.splitn(2, " [").collect();
                 let dispatcher = parts[0].to_string();
-                let args = parts.get(1)
+                let args = parts
+                    .get(1)
                     .map(|s| s.trim_end_matches(']'))
                     .unwrap_or("")
                     .to_string();
@@ -660,27 +742,33 @@ impl UI {
             } else {
                 (command_part.to_string(), None)
             };
-            
+
             // Format as config line
             let mod_part = if modifiers.is_empty() {
                 String::new()
             } else {
                 format!("{}, ", modifiers)
             };
-            
+
             let args_part = if let Some(args) = args {
                 format!(", {}", args)
             } else {
                 String::new()
             };
-            
-            Some(format!("bind = {}{}, {}{}", mod_part, key, dispatcher, args_part))
+
+            Some(format!(
+                "bind = {}{}, {}{}",
+                mod_part, key, dispatcher, args_part
+            ))
         } else {
             None
         }
     }
 
-    pub async fn load_current_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+    pub async fn load_current_config(
+        &mut self,
+        hyprctl: &crate::hyprctl::HyprCtl,
+    ) -> Result<(), anyhow::Error> {
         // Try to load from hyprctl first
         let _hyprctl_success = match hyprctl.get_all_options().await {
             Ok(all_options) => {
@@ -691,12 +779,24 @@ impl UI {
                 eprintln!("Warning: Failed to load all options from hyprctl: {}", e);
                 // Fall back to loading individual sections
                 let mut sections_loaded = 0;
-                if self.load_general_config(hyprctl).await.is_ok() { sections_loaded += 1; }
-                if self.load_input_config(hyprctl).await.is_ok() { sections_loaded += 1; }
-                if self.load_decoration_config(hyprctl).await.is_ok() { sections_loaded += 1; }
-                if self.load_animations_config(hyprctl).await.is_ok() { sections_loaded += 1; }
-                if self.load_gestures_config(hyprctl).await.is_ok() { sections_loaded += 1; }
-                if self.load_misc_config(hyprctl).await.is_ok() { sections_loaded += 1; }
+                if self.load_general_config(hyprctl).await.is_ok() {
+                    sections_loaded += 1;
+                }
+                if self.load_input_config(hyprctl).await.is_ok() {
+                    sections_loaded += 1;
+                }
+                if self.load_decoration_config(hyprctl).await.is_ok() {
+                    sections_loaded += 1;
+                }
+                if self.load_animations_config(hyprctl).await.is_ok() {
+                    sections_loaded += 1;
+                }
+                if self.load_gestures_config(hyprctl).await.is_ok() {
+                    sections_loaded += 1;
+                }
+                if self.load_misc_config(hyprctl).await.is_ok() {
+                    sections_loaded += 1;
+                }
                 sections_loaded > 0
             }
         };
@@ -705,7 +805,7 @@ impl UI {
         let binds_success = self.load_binds_config(hyprctl).await.is_ok();
         let window_rules_success = self.load_window_rules_config(hyprctl).await.is_ok();
         let layer_rules_success = self.load_layer_rules_config(hyprctl).await.is_ok();
-        
+
         // If hyprctl failed for rules, try to load from config file
         if !binds_success || !window_rules_success || !layer_rules_success {
             eprintln!("Debug: hyprctl failed (binds: {}, window_rules: {}, layer_rules: {}), trying config file", 
@@ -718,58 +818,68 @@ impl UI {
         } else {
             eprintln!("Debug: hyprctl succeeded, not loading from config file");
         }
-        
+
         Ok(())
     }
 
     async fn load_from_config_file(&mut self) -> Result<(), anyhow::Error> {
         let config = crate::config::Config::load().await?;
-        eprintln!("Debug: Config loaded, path: {:?}", config.hyprland_config_path);
-        
+        eprintln!(
+            "Debug: Config loaded, path: {:?}",
+            config.hyprland_config_path
+        );
+
         let hyprland_config = config.parse_hyprland_config().await?;
-        eprintln!("Debug: Parsed {} keybinds, {} window rules, {} layer rules", 
-                  hyprland_config.keybinds.len(), 
-                  hyprland_config.window_rules.len(), 
-                  hyprland_config.layer_rules.len());
-        
+        eprintln!(
+            "Debug: Parsed {} keybinds, {} window rules, {} layer rules",
+            hyprland_config.keybinds.len(),
+            hyprland_config.window_rules.len(),
+            hyprland_config.layer_rules.len()
+        );
+
         // Load keybinds from config file
         if !hyprland_config.keybinds.is_empty() {
             let mut bind_items = Vec::new();
-            
+
             for (i, keybind) in hyprland_config.keybinds.iter().enumerate() {
                 let key = format!("bind_{}", i);
-                let display_value = format!("{} {} → {} {}",
+                let display_value = format!(
+                    "{} {} → {} {}",
                     keybind.modifiers,
                     keybind.key,
                     keybind.dispatcher,
-                    if keybind.args.is_empty() { "".to_string() } else { format!("[{}]", keybind.args) }
+                    if keybind.args.is_empty() {
+                        "".to_string()
+                    } else {
+                        format!("[{}]", keybind.args)
+                    }
                 );
-                
+
                 bind_items.push(crate::ui::ConfigItem {
                     key: key.clone(),
                     value: display_value,
-                    description: format!("Keybind: {} {} -> {}", 
-                        keybind.modifiers,
-                        keybind.key,
-                        keybind.dispatcher
+                    description: format!(
+                        "Keybind: {} {} -> {}",
+                        keybind.modifiers, keybind.key, keybind.dispatcher
                     ),
                     data_type: crate::ui::ConfigDataType::String,
                     suggestions: self.get_keybind_suggestions(&keybind.dispatcher),
                 });
             }
-            
+
             if !bind_items.is_empty() {
-                self.config_items.insert(crate::app::FocusedPanel::Binds, bind_items);
+                self.config_items
+                    .insert(crate::app::FocusedPanel::Binds, bind_items);
             }
         }
-        
+
         // Load window rules from config file
         if !hyprland_config.window_rules.is_empty() {
             let mut rule_items = Vec::new();
-            
+
             for (i, rule) in hyprland_config.window_rules.iter().enumerate() {
                 let key = format!("window_rule_{}", i);
-                
+
                 rule_items.push(crate::ui::ConfigItem {
                     key: key.clone(),
                     value: rule.clone(),
@@ -778,20 +888,21 @@ impl UI {
                     suggestions: self.get_window_rule_suggestions(),
                 });
             }
-            
+
             if !rule_items.is_empty() {
-                self.config_items.insert(crate::app::FocusedPanel::WindowRules, rule_items);
+                self.config_items
+                    .insert(crate::app::FocusedPanel::WindowRules, rule_items);
             }
         }
-        
+
         // Load layer rules from config file
         if !hyprland_config.layer_rules.is_empty() || !hyprland_config.workspace_rules.is_empty() {
             let mut rule_items = Vec::new();
-            
+
             // Add layer rules
             for (i, rule) in hyprland_config.layer_rules.iter().enumerate() {
                 let key = format!("layer_rule_{}", i);
-                
+
                 rule_items.push(crate::ui::ConfigItem {
                     key: key.clone(),
                     value: rule.clone(),
@@ -800,11 +911,11 @@ impl UI {
                     suggestions: self.get_layer_rule_suggestions(),
                 });
             }
-            
+
             // Add workspace rules
             for (i, rule) in hyprland_config.workspace_rules.iter().enumerate() {
                 let key = format!("workspace_rule_{}", i);
-                
+
                 rule_items.push(crate::ui::ConfigItem {
                     key: key.clone(),
                     value: rule.clone(),
@@ -813,15 +924,16 @@ impl UI {
                     suggestions: self.get_workspace_rule_suggestions(),
                 });
             }
-            
+
             if !rule_items.is_empty() {
-                self.config_items.insert(crate::app::FocusedPanel::LayerRules, rule_items);
+                self.config_items
+                    .insert(crate::app::FocusedPanel::LayerRules, rule_items);
             }
         }
-        
+
         Ok(())
     }
-    
+
     fn add_fallback_placeholder_data(&mut self) {
         // Add placeholder keybinds if not already present
         if !self.config_items.contains_key(&FocusedPanel::Binds) {
@@ -831,7 +943,11 @@ impl UI {
                     value: "SUPER + Q → exec [kitty]".to_string(),
                     description: "Example: Open terminal with Super+Q".to_string(),
                     data_type: ConfigDataType::String,
-                    suggestions: vec!["exec".to_string(), "killactive".to_string(), "togglefloating".to_string()],
+                    suggestions: vec![
+                        "exec".to_string(),
+                        "killactive".to_string(),
+                        "togglefloating".to_string(),
+                    ],
                 },
                 ConfigItem {
                     key: "hyprland_not_running".to_string(),
@@ -841,9 +957,10 @@ impl UI {
                     suggestions: vec![],
                 },
             ];
-            self.config_items.insert(FocusedPanel::Binds, placeholder_binds);
+            self.config_items
+                .insert(FocusedPanel::Binds, placeholder_binds);
         }
-        
+
         // Add placeholder window rules if not already present
         if !self.config_items.contains_key(&FocusedPanel::WindowRules) {
             let placeholder_rules = vec![
@@ -862,9 +979,10 @@ impl UI {
                     suggestions: vec![],
                 },
             ];
-            self.config_items.insert(FocusedPanel::WindowRules, placeholder_rules);
+            self.config_items
+                .insert(FocusedPanel::WindowRules, placeholder_rules);
         }
-        
+
         // Add placeholder layer rules if not already present
         if !self.config_items.contains_key(&FocusedPanel::LayerRules) {
             let placeholder_layer_rules = vec![
@@ -883,14 +1001,15 @@ impl UI {
                     suggestions: vec![],
                 },
             ];
-            self.config_items.insert(FocusedPanel::LayerRules, placeholder_layer_rules);
+            self.config_items
+                .insert(FocusedPanel::LayerRules, placeholder_layer_rules);
         }
     }
 
     fn populate_config_from_options(&mut self, options: std::collections::HashMap<String, String>) {
         // Clear existing items and populate from actual hyprctl data
         self.config_items.clear();
-        
+
         // Initialize empty vectors for each panel
         let mut general_items = Vec::new();
         let mut input_items = Vec::new();
@@ -902,7 +1021,7 @@ impl UI {
         // Process all options and categorize them
         for (key, value) in options {
             let parsed_value = Self::parse_hyprctl_value(&value).unwrap_or(value.clone());
-            
+
             let config_item = ConfigItem {
                 key: key.clone(),
                 value: parsed_value,
@@ -937,19 +1056,23 @@ impl UI {
 
         // Insert into config_items
         if !general_items.is_empty() {
-            self.config_items.insert(FocusedPanel::General, general_items);
+            self.config_items
+                .insert(FocusedPanel::General, general_items);
         }
         if !input_items.is_empty() {
             self.config_items.insert(FocusedPanel::Input, input_items);
         }
         if !decoration_items.is_empty() {
-            self.config_items.insert(FocusedPanel::Decoration, decoration_items);
+            self.config_items
+                .insert(FocusedPanel::Decoration, decoration_items);
         }
         if !animation_items.is_empty() {
-            self.config_items.insert(FocusedPanel::Animations, animation_items);
+            self.config_items
+                .insert(FocusedPanel::Animations, animation_items);
         }
         if !gesture_items.is_empty() {
-            self.config_items.insert(FocusedPanel::Gestures, gesture_items);
+            self.config_items
+                .insert(FocusedPanel::Gestures, gesture_items);
         }
         if !misc_items.is_empty() {
             self.config_items.insert(FocusedPanel::Misc, misc_items);
@@ -967,7 +1090,7 @@ impl UI {
             "general:resize_on_border" => "Enable resizing by dragging border".to_string(),
             "general:extend_border_grab_area" => "Extended border grab area".to_string(),
             "general:hover_icon_on_border" => "Show resize cursor on border hover".to_string(),
-            
+
             // Input options
             "input:kb_layout" => "Keyboard layout".to_string(),
             "input:kb_variant" => "Keyboard layout variant".to_string(),
@@ -979,7 +1102,7 @@ impl UI {
             "input:sensitivity" => "Mouse sensitivity".to_string(),
             "input:accel_profile" => "Mouse acceleration profile".to_string(),
             "input:natural_scroll" => "Natural scrolling".to_string(),
-            
+
             // Decoration options
             "decoration:rounding" => "Window corner rounding".to_string(),
             "decoration:blur:enabled" => "Enable blur effects".to_string(),
@@ -991,10 +1114,10 @@ impl UI {
             "decoration:col.shadow" => "Shadow color".to_string(),
             "decoration:dim_inactive" => "Dim inactive windows".to_string(),
             "decoration:dim_strength" => "Dim strength".to_string(),
-            
+
             // Animation options
             "animations:enabled" => "Enable animations".to_string(),
-            
+
             // Gesture options
             "gestures:workspace_swipe" => "Enable workspace swiping".to_string(),
             "gestures:workspace_swipe_fingers" => "Fingers for workspace swipe".to_string(),
@@ -1004,7 +1127,7 @@ impl UI {
             "gestures:workspace_swipe_cancel_ratio" => "Swipe cancel ratio".to_string(),
             "gestures:workspace_swipe_create_new" => "Create new workspace on swipe".to_string(),
             "gestures:workspace_swipe_forever" => "Enable infinite workspace swipe".to_string(),
-            
+
             // Misc options
             "misc:disable_hyprland_logo" => "Disable Hyprland logo".to_string(),
             "misc:disable_splash_rendering" => "Disable splash screen".to_string(),
@@ -1017,7 +1140,7 @@ impl UI {
             "misc:disable_autoreload" => "Disable auto-reload".to_string(),
             "misc:enable_swallow" => "Enable window swallowing".to_string(),
             "misc:swallow_regex" => "Swallow regex pattern".to_string(),
-            
+
             _ => format!("Configuration option: {}", key),
         }
     }
@@ -1027,45 +1150,67 @@ impl UI {
         match key {
             // Color options
             k if k.contains("col.") || k.contains("color") => ConfigDataType::Color,
-            
+
             // Boolean options
-            k if k.contains("enable") || k.contains("disable") || 
-                 k.ends_with("_on_border") || k.contains("natural_scroll") ||
-                 k.contains("mouse_refocus") || k.contains("resize_on_border") => {
+            k if k.contains("enable")
+                || k.contains("disable")
+                || k.ends_with("_on_border")
+                || k.contains("natural_scroll")
+                || k.contains("mouse_refocus")
+                || k.contains("resize_on_border") =>
+            {
                 ConfigDataType::Boolean
             }
-            
-            // Float options  
-            "input:sensitivity" | "decoration:dim_strength" | 
-            "gestures:workspace_swipe_cancel_ratio" => {
-                ConfigDataType::Float { min: Some(0.0), max: Some(10.0) }
-            }
-            
+
+            // Float options
+            "input:sensitivity"
+            | "decoration:dim_strength"
+            | "gestures:workspace_swipe_cancel_ratio" => ConfigDataType::Float {
+                min: Some(0.0),
+                max: Some(10.0),
+            },
+
             // Integer options with ranges
-            "general:gaps_in" | "general:gaps_out" => {
-                ConfigDataType::Integer { min: Some(0), max: Some(100) }
+            "general:gaps_in" | "general:gaps_out" => ConfigDataType::Integer {
+                min: Some(0),
+                max: Some(100),
+            },
+            "general:border_size" => ConfigDataType::Integer {
+                min: Some(0),
+                max: Some(20),
+            },
+            "decoration:rounding" => ConfigDataType::Integer {
+                min: Some(0),
+                max: Some(50),
+            },
+
+            k if k.contains("size")
+                || k.contains("range")
+                || k.contains("passes")
+                || k.contains("fingers")
+                || k.contains("distance") =>
+            {
+                ConfigDataType::Integer {
+                    min: Some(0),
+                    max: Some(100),
+                }
             }
-            "general:border_size" => {
-                ConfigDataType::Integer { min: Some(0), max: Some(20) }
-            }
-            "decoration:rounding" => {
-                ConfigDataType::Integer { min: Some(0), max: Some(50) }
-            }
-            
-            k if k.contains("size") || k.contains("range") || k.contains("passes") ||
-                 k.contains("fingers") || k.contains("distance") => {
-                ConfigDataType::Integer { min: Some(0), max: Some(100) }
-            }
-            
+
             // Try to infer from value
             _ => {
                 let trimmed = value.trim();
                 if trimmed == "true" || trimmed == "false" || trimmed == "1" || trimmed == "0" {
                     ConfigDataType::Boolean
                 } else if trimmed.parse::<i32>().is_ok() {
-                    ConfigDataType::Integer { min: None, max: None }
+                    ConfigDataType::Integer {
+                        min: None,
+                        max: None,
+                    }
                 } else if trimmed.parse::<f32>().is_ok() {
-                    ConfigDataType::Float { min: None, max: None }
+                    ConfigDataType::Float {
+                        min: None,
+                        max: None,
+                    }
                 } else if trimmed.starts_with('#') || trimmed.starts_with("rgb") {
                     ConfigDataType::Color
                 } else {
@@ -1079,17 +1224,22 @@ impl UI {
         match key {
             "input:follow_mouse" => vec!["0".to_string(), "1".to_string(), "2".to_string()],
             "input:accel_profile" => vec!["flat".to_string(), "adaptive".to_string()],
-            "input:kb_layout" => vec!["us".to_string(), "de".to_string(), "fr".to_string(), "uk".to_string()],
+            "input:kb_layout" => vec![
+                "us".to_string(),
+                "de".to_string(),
+                "fr".to_string(),
+                "uk".to_string(),
+            ],
             "general:col.active_border" => vec![
-                "0xffff0000".to_string(), 
-                "0xff00ff00".to_string(), 
+                "0xffff0000".to_string(),
+                "0xff00ff00".to_string(),
                 "0xff0000ff".to_string(),
-                "0xffffffff".to_string()
+                "0xffffffff".to_string(),
             ],
             "general:col.inactive_border" => vec![
-                "0x66333333".to_string(), 
-                "0x66666666".to_string(), 
-                "0x66999999".to_string()
+                "0x66333333".to_string(),
+                "0x66666666".to_string(),
+                "0x66999999".to_string(),
             ],
             _ => vec![],
         }
@@ -1144,18 +1294,21 @@ impl UI {
         ]
     }
 
-    async fn load_general_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+    async fn load_general_config(
+        &mut self,
+        hyprctl: &crate::hyprctl::HyprCtl,
+    ) -> Result<(), anyhow::Error> {
         if let Some(items) = self.config_items.get_mut(&FocusedPanel::General) {
             for item in items.iter_mut() {
                 let hypr_key = match item.key.as_str() {
                     "gaps_in" => "general:gaps_in",
-                    "gaps_out" => "general:gaps_out", 
+                    "gaps_out" => "general:gaps_out",
                     "border_size" => "general:border_size",
                     "col.active_border" => "general:col.active_border",
                     "col.inactive_border" => "general:col.inactive_border",
                     _ => continue,
                 };
-                
+
                 match hyprctl.get_option(hypr_key).await {
                     Ok(value) => {
                         // Parse hyprctl output - it usually returns "option = value"
@@ -1172,7 +1325,10 @@ impl UI {
         Ok(())
     }
 
-    async fn load_input_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+    async fn load_input_config(
+        &mut self,
+        hyprctl: &crate::hyprctl::HyprCtl,
+    ) -> Result<(), anyhow::Error> {
         if let Some(items) = self.config_items.get_mut(&FocusedPanel::Input) {
             for item in items.iter_mut() {
                 let hypr_key = match item.key.as_str() {
@@ -1181,7 +1337,7 @@ impl UI {
                     "sensitivity" => "input:sensitivity",
                     _ => continue,
                 };
-                
+
                 match hyprctl.get_option(hypr_key).await {
                     Ok(value) => {
                         if let Some(parsed_value) = Self::parse_hyprctl_value(&value) {
@@ -1197,7 +1353,10 @@ impl UI {
         Ok(())
     }
 
-    async fn load_decoration_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+    async fn load_decoration_config(
+        &mut self,
+        hyprctl: &crate::hyprctl::HyprCtl,
+    ) -> Result<(), anyhow::Error> {
         if let Some(items) = self.config_items.get_mut(&FocusedPanel::Decoration) {
             for item in items.iter_mut() {
                 let hypr_key = match item.key.as_str() {
@@ -1206,7 +1365,7 @@ impl UI {
                     "blur.size" => "decoration:blur:size",
                     _ => continue,
                 };
-                
+
                 match hyprctl.get_option(hypr_key).await {
                     Ok(value) => {
                         if let Some(parsed_value) = Self::parse_hyprctl_value(&value) {
@@ -1222,14 +1381,17 @@ impl UI {
         Ok(())
     }
 
-    async fn load_animations_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+    async fn load_animations_config(
+        &mut self,
+        hyprctl: &crate::hyprctl::HyprCtl,
+    ) -> Result<(), anyhow::Error> {
         if let Some(items) = self.config_items.get_mut(&FocusedPanel::Animations) {
             for item in items.iter_mut() {
                 let hypr_key = match item.key.as_str() {
                     "animations.enabled" => "animations:enabled",
                     _ => continue,
                 };
-                
+
                 match hyprctl.get_option(hypr_key).await {
                     Ok(value) => {
                         if let Some(parsed_value) = Self::parse_hyprctl_value(&value) {
@@ -1245,7 +1407,10 @@ impl UI {
         Ok(())
     }
 
-    async fn load_gestures_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+    async fn load_gestures_config(
+        &mut self,
+        hyprctl: &crate::hyprctl::HyprCtl,
+    ) -> Result<(), anyhow::Error> {
         if let Some(items) = self.config_items.get_mut(&FocusedPanel::Gestures) {
             for item in items.iter_mut() {
                 let hypr_key = match item.key.as_str() {
@@ -1255,7 +1420,7 @@ impl UI {
                     "gestures.workspace_swipe_invert" => "gestures:workspace_swipe_invert",
                     _ => continue,
                 };
-                
+
                 match hyprctl.get_option(hypr_key).await {
                     Ok(value) => {
                         if let Some(parsed_value) = Self::parse_hyprctl_value(&value) {
@@ -1271,7 +1436,10 @@ impl UI {
         Ok(())
     }
 
-    async fn load_misc_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+    async fn load_misc_config(
+        &mut self,
+        hyprctl: &crate::hyprctl::HyprCtl,
+    ) -> Result<(), anyhow::Error> {
         if let Some(items) = self.config_items.get_mut(&FocusedPanel::Misc) {
             for item in items.iter_mut() {
                 let hypr_key = match item.key.as_str() {
@@ -1282,7 +1450,7 @@ impl UI {
                     "misc.vrr" => "misc:vrr",
                     _ => continue,
                 };
-                
+
                 match hyprctl.get_option(hypr_key).await {
                     Ok(value) => {
                         if let Some(parsed_value) = Self::parse_hyprctl_value(&value) {
@@ -1298,26 +1466,32 @@ impl UI {
         Ok(())
     }
 
-    async fn load_binds_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+    async fn load_binds_config(
+        &mut self,
+        hyprctl: &crate::hyprctl::HyprCtl,
+    ) -> Result<(), anyhow::Error> {
         match hyprctl.get_binds().await {
             Ok(keybinds) => {
                 // If hyprctl succeeds but returns empty keybinds, treat it as a failure
                 // This likely means Hyprland isn't running and we should try config file parsing
                 if keybinds.is_empty() {
-                    eprintln!("Debug: hyprctl.get_binds() returned empty results, treating as failure");
+                    eprintln!(
+                        "Debug: hyprctl.get_binds() returned empty results, treating as failure"
+                    );
                     return Err(anyhow::anyhow!("No keybinds found via hyprctl"));
                 }
-                
+
                 let mut bind_items = Vec::new();
-                
+
                 for (i, keybind) in keybinds.iter().enumerate() {
                     // Create a unique key for each keybind
                     let key = format!("bind_{}", i);
-                    
+
                     bind_items.push(ConfigItem {
                         key: key.clone(),
                         value: keybind.display_string(),
-                        description: format!("Keybind: {} {}", 
+                        description: format!(
+                            "Keybind: {} {}",
                             keybind.dispatcher,
                             keybind.args.as_deref().unwrap_or("")
                         ),
@@ -1325,7 +1499,7 @@ impl UI {
                         suggestions: self.get_keybind_suggestions(&keybind.dispatcher),
                     });
                 }
-                
+
                 // Insert the loaded keybinds
                 self.config_items.insert(FocusedPanel::Binds, bind_items);
                 Ok(())
@@ -1348,32 +1522,67 @@ impl UI {
                 "grim -g \"$(slurp)\"".to_string(),
             ],
             "workspace" => vec![
-                "1".to_string(), "2".to_string(), "3".to_string(), "4".to_string(),
-                "5".to_string(), "6".to_string(), "7".to_string(), "8".to_string(),
-                "9".to_string(), "10".to_string(),
+                "1".to_string(),
+                "2".to_string(),
+                "3".to_string(),
+                "4".to_string(),
+                "5".to_string(),
+                "6".to_string(),
+                "7".to_string(),
+                "8".to_string(),
+                "9".to_string(),
+                "10".to_string(),
             ],
             "movetoworkspace" => vec![
-                "1".to_string(), "2".to_string(), "3".to_string(), "4".to_string(),
-                "5".to_string(), "6".to_string(), "7".to_string(), "8".to_string(),
-                "9".to_string(), "10".to_string(),
+                "1".to_string(),
+                "2".to_string(),
+                "3".to_string(),
+                "4".to_string(),
+                "5".to_string(),
+                "6".to_string(),
+                "7".to_string(),
+                "8".to_string(),
+                "9".to_string(),
+                "10".to_string(),
             ],
             "movefocus" => vec![
-                "l".to_string(), "r".to_string(), "u".to_string(), "d".to_string(),
-                "left".to_string(), "right".to_string(), "up".to_string(), "down".to_string(),
+                "l".to_string(),
+                "r".to_string(),
+                "u".to_string(),
+                "d".to_string(),
+                "left".to_string(),
+                "right".to_string(),
+                "up".to_string(),
+                "down".to_string(),
             ],
             "movewindow" => vec![
-                "l".to_string(), "r".to_string(), "u".to_string(), "d".to_string(),
-                "left".to_string(), "right".to_string(), "up".to_string(), "down".to_string(),
+                "l".to_string(),
+                "r".to_string(),
+                "u".to_string(),
+                "d".to_string(),
+                "left".to_string(),
+                "right".to_string(),
+                "up".to_string(),
+                "down".to_string(),
             ],
             "resizeactive" => vec![
-                "10 0".to_string(), "-10 0".to_string(), "0 10".to_string(), "0 -10".to_string(),
-                "50 0".to_string(), "-50 0".to_string(), "0 50".to_string(), "0 -50".to_string(),
+                "10 0".to_string(),
+                "-10 0".to_string(),
+                "0 10".to_string(),
+                "0 -10".to_string(),
+                "50 0".to_string(),
+                "-50 0".to_string(),
+                "0 50".to_string(),
+                "0 -50".to_string(),
             ],
             _ => vec![],
         }
     }
 
-    async fn load_window_rules_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+    async fn load_window_rules_config(
+        &mut self,
+        hyprctl: &crate::hyprctl::HyprCtl,
+    ) -> Result<(), anyhow::Error> {
         match hyprctl.get_window_rules().await {
             Ok(window_rules) => {
                 // If hyprctl succeeds but returns empty window rules, treat it as a failure
@@ -1382,12 +1591,12 @@ impl UI {
                     eprintln!("Debug: hyprctl.get_window_rules() returned empty results, treating as failure");
                     return Err(anyhow::anyhow!("No window rules found via hyprctl"));
                 }
-                
+
                 let mut rule_items = Vec::new();
-                
+
                 for (i, rule) in window_rules.iter().enumerate() {
                     let key = format!("window_rule_{}", i);
-                    
+
                     // Parse rule to extract description
                     let description = if rule.contains("windowrule") {
                         let parts: Vec<&str> = rule.splitn(3, " = ").collect();
@@ -1399,7 +1608,7 @@ impl UI {
                     } else {
                         format!("Window pattern: {}", rule)
                     };
-                    
+
                     rule_items.push(ConfigItem {
                         key: key.clone(),
                         value: rule.clone(),
@@ -1408,9 +1617,10 @@ impl UI {
                         suggestions: self.get_window_rule_suggestions(),
                     });
                 }
-                
+
                 // Insert the loaded window rules
-                self.config_items.insert(FocusedPanel::WindowRules, rule_items);
+                self.config_items
+                    .insert(FocusedPanel::WindowRules, rule_items);
                 Ok(())
             }
             Err(e) => {
@@ -1420,7 +1630,10 @@ impl UI {
         }
     }
 
-    async fn load_layer_rules_config(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+    async fn load_layer_rules_config(
+        &mut self,
+        hyprctl: &crate::hyprctl::HyprCtl,
+    ) -> Result<(), anyhow::Error> {
         match hyprctl.get_layer_rules().await {
             Ok(layer_rules) => {
                 // If hyprctl succeeds but returns empty layer rules, treat it as a failure
@@ -1429,12 +1642,12 @@ impl UI {
                     eprintln!("Debug: hyprctl.get_layer_rules() returned empty results, treating as failure");
                     return Err(anyhow::anyhow!("No layer rules found via hyprctl"));
                 }
-                
+
                 let mut rule_items = Vec::new();
-                
+
                 for (i, rule) in layer_rules.iter().enumerate() {
                     let key = format!("layer_rule_{}", i);
-                    
+
                     // Parse rule to extract description
                     let description = if rule.contains("layerrule") {
                         let parts: Vec<&str> = rule.splitn(3, " = ").collect();
@@ -1446,7 +1659,7 @@ impl UI {
                     } else {
                         format!("Layer configuration: {}", rule)
                     };
-                    
+
                     rule_items.push(ConfigItem {
                         key: key.clone(),
                         value: rule.clone(),
@@ -1455,14 +1668,14 @@ impl UI {
                         suggestions: self.get_layer_rule_suggestions(),
                     });
                 }
-                
+
                 // Also load workspace rules if available
                 match hyprctl.get_workspace_rules().await {
                     Ok(workspace_rules) => {
                         // Add workspace rules to the layer rules panel for now
                         for (i, rule) in workspace_rules.iter().enumerate() {
                             let key = format!("workspace_rule_{}", i);
-                            
+
                             rule_items.push(ConfigItem {
                                 key: key.clone(),
                                 value: rule.clone(),
@@ -1478,7 +1691,8 @@ impl UI {
                 }
 
                 // Insert the loaded layer rules
-                self.config_items.insert(FocusedPanel::LayerRules, rule_items);
+                self.config_items
+                    .insert(FocusedPanel::LayerRules, rule_items);
                 Ok(())
             }
             Err(e) => {
@@ -1491,7 +1705,7 @@ impl UI {
     fn parse_hyprctl_value(raw_value: &str) -> Option<String> {
         // hyprctl usually returns output like "option = value" or just "value"
         // Handle different formats:
-        
+
         if raw_value.contains(" = ") {
             // Format: "option = value"
             if let Some(value_part) = raw_value.split(" = ").nth(1) {
@@ -1509,13 +1723,13 @@ impl UI {
                 return Some(trimmed.to_string());
             }
         }
-        
+
         None
     }
 
     fn parse_rule_for_editing(&self, rule_value: &str, panel: &FocusedPanel) -> EditMode {
         // Parse different rule formats
-        
+
         let rule_type = match panel {
             FocusedPanel::WindowRules => RuleType::Window,
             FocusedPanel::LayerRules => {
@@ -1536,7 +1750,7 @@ impl UI {
             } else {
                 action_part.to_string()
             };
-            
+
             EditMode::Rule {
                 rule_type,
                 pattern: pattern_part.to_string(),
@@ -1568,10 +1782,10 @@ impl UI {
         let main_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(4),  // Header
-                Constraint::Length(3),  // Tab bar
-                Constraint::Min(0),     // Main content
-                Constraint::Length(3),  // Footer
+                Constraint::Length(4), // Header
+                Constraint::Length(3), // Tab bar
+                Constraint::Min(0),    // Main content
+                Constraint::Length(3), // Footer
             ])
             .margin(1)
             .split(size);
@@ -1617,7 +1831,10 @@ impl UI {
         let title_spans = vec![
             Span::styled("R-Hyprconfig", self.theme.header_style().bold()),
             Span::raw(" - "),
-            Span::styled("Hyprland Configuration Manager", Style::default().fg(self.theme.accent_secondary).bold()),
+            Span::styled(
+                "Hyprland Configuration Manager",
+                Style::default().fg(self.theme.accent_secondary).bold(),
+            ),
         ];
 
         let header_content = vec![
@@ -1627,7 +1844,10 @@ impl UI {
                 Span::styled("Enter", self.theme.warning_style().bold()),
                 Span::styled(" to edit • ", Style::default().fg(self.theme.fg_muted)),
                 Span::styled("Tab", self.theme.warning_style().bold()),
-                Span::styled(" to switch tabs • ", Style::default().fg(self.theme.fg_muted)),
+                Span::styled(
+                    " to switch tabs • ",
+                    Style::default().fg(self.theme.fg_muted),
+                ),
                 Span::styled("↑↓", self.theme.info_style().bold()),
                 Span::styled(" to navigate • ", Style::default().fg(self.theme.fg_muted)),
                 Span::styled("S", self.theme.success_style().bold()),
@@ -1645,7 +1865,7 @@ impl UI {
                     .border_style(self.theme.border_style(true))
                     .border_type(BorderType::Double)
                     .title(" Hyprland TUI ")
-                    .title_style(self.theme.header_style().bold())
+                    .title_style(self.theme.header_style().bold()),
             );
 
         f.render_widget(header, area);
@@ -1664,34 +1884,39 @@ impl UI {
             FocusedPanel::Misc,
         ];
 
-        let tab_spans: Vec<Span> = tabs.iter().enumerate().map(|(i, &panel)| {
-            let tab_name = match panel {
-                FocusedPanel::General => "General",
-                FocusedPanel::Input => "Input",
-                FocusedPanel::Decoration => "Decoration",
-                FocusedPanel::Animations => "Animations",
-                FocusedPanel::Gestures => "Gestures",
-                FocusedPanel::Binds => "Binds",
-                FocusedPanel::WindowRules => "Win Rules",
-                FocusedPanel::LayerRules => "Layer Rules",
-                FocusedPanel::Misc => "Misc",
-            };
+        let tab_spans: Vec<Span> = tabs
+            .iter()
+            .enumerate()
+            .map(|(i, &panel)| {
+                let tab_name = match panel {
+                    FocusedPanel::General => "General",
+                    FocusedPanel::Input => "Input",
+                    FocusedPanel::Decoration => "Decoration",
+                    FocusedPanel::Animations => "Animations",
+                    FocusedPanel::Gestures => "Gestures",
+                    FocusedPanel::Binds => "Binds",
+                    FocusedPanel::WindowRules => "Win Rules",
+                    FocusedPanel::LayerRules => "Layer Rules",
+                    FocusedPanel::Misc => "Misc",
+                };
 
-            let style = self.theme.tab_style(panel == self.current_tab);
+                let style = self.theme.tab_style(panel == self.current_tab);
 
-            let mut result = vec![Span::styled(tab_name, style)];
-            if i < tabs.len() - 1 {
-                result.push(Span::raw(" │ "));
-            }
-            result
-        }).flatten().collect();
+                let mut result = vec![Span::styled(tab_name, style)];
+                if i < tabs.len() - 1 {
+                    result.push(Span::raw(" │ "));
+                }
+                result
+            })
+            .flatten()
+            .collect();
 
         let tabs_paragraph = Paragraph::new(Line::from(tab_spans))
             .alignment(Alignment::Center)
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(self.theme.border_style(false))
+                    .border_style(self.theme.border_style(false)),
             );
 
         f.render_widget(tabs_paragraph, area);
@@ -1708,7 +1933,7 @@ impl UI {
                 ]
             } else {
                 vec![
-                    Constraint::Min(0),    // Full area for list
+                    Constraint::Min(0), // Full area for list
                 ]
             })
             .split(area);
@@ -1719,38 +1944,49 @@ impl UI {
         }
 
         // Get config items for current tab and filter them
-        let config_items = self.config_items.get(&self.current_tab).cloned().unwrap_or_default();
+        let config_items = self
+            .config_items
+            .get(&self.current_tab)
+            .cloned()
+            .unwrap_or_default();
         let filtered_items = self.filter_items(&config_items);
-        
+
         // Create list items with enhanced formatting
-        let items: Vec<ListItem> = filtered_items.iter().map(|item| {
-            let value_style = self.theme.data_type_style(&item.data_type);
+        let items: Vec<ListItem> = filtered_items
+            .iter()
+            .map(|item| {
+                let value_style = self.theme.data_type_style(&item.data_type);
 
-            let key_display = if item.key.len() > 25 {
-                format!("{}...", &item.key[..22])
-            } else {
-                item.key.clone()
-            };
+                let key_display = if item.key.len() > 25 {
+                    format!("{}...", &item.key[..22])
+                } else {
+                    item.key.clone()
+                };
 
-            let value_display = if item.value.len() > 40 {
-                format!("{}...", &item.value[..37])
-            } else {
-                item.value.clone()
-            };
+                let value_display = if item.value.len() > 40 {
+                    format!("{}...", &item.value[..37])
+                } else {
+                    item.value.clone()
+                };
 
-            let line = Line::from(vec![
-                Span::styled(format!("{:<28}", key_display), Style::default().fg(Color::Rgb(200, 200, 255)).bold()),
-                Span::raw("│ "),
-                Span::styled(value_display, value_style.bold()),
-            ]);
+                let line = Line::from(vec![
+                    Span::styled(
+                        format!("{:<28}", key_display),
+                        Style::default().fg(Color::Rgb(200, 200, 255)).bold(),
+                    ),
+                    Span::raw("│ "),
+                    Span::styled(value_display, value_style.bold()),
+                ]);
 
-            ListItem::new(vec![
-                line,
-                Line::from(vec![
-                    Span::styled(format!("  {}", item.description), Style::default().fg(Color::DarkGray).italic()),
-                ]),
-            ])
-        }).collect();
+                ListItem::new(vec![
+                    line,
+                    Line::from(vec![Span::styled(
+                        format!("  {}", item.description),
+                        Style::default().fg(Color::DarkGray).italic(),
+                    )]),
+                ])
+            })
+            .collect();
 
         // Panel title
         let title = match self.current_tab {
@@ -1772,7 +2008,7 @@ impl UI {
                     .title_style(Style::default().fg(Color::Cyan).bold())
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(Color::Yellow))
-                    .border_type(BorderType::Rounded)
+                    .border_type(BorderType::Rounded),
             )
             .highlight_style(
                 Style::default()
@@ -1789,57 +2025,73 @@ impl UI {
         } else {
             chunks[0] // Use first (and only) chunk when no search bar
         };
-        
+
         let current_list_state = self.get_current_list_state();
         f.render_stateful_widget(list, list_area, current_list_state);
     }
 
     #[allow(dead_code)]
-    fn render_enhanced_panel(&mut self, f: &mut Frame, area: Rect, panel: FocusedPanel, focused_panel: FocusedPanel) {
+    fn render_enhanced_panel(
+        &mut self,
+        f: &mut Frame,
+        area: Rect,
+        panel: FocusedPanel,
+        focused_panel: FocusedPanel,
+    ) {
         let is_focused = focused_panel == panel;
-        
+
         // Enhanced visual styling
         let (border_style, border_type, panel_bg) = if is_focused {
             (
                 Style::default().fg(Color::Rgb(255, 215, 0)), // Gold for focused
                 BorderType::Double,
-                Some(Color::Rgb(10, 10, 30)) // Dark blue background
+                Some(Color::Rgb(10, 10, 30)), // Dark blue background
             )
         } else {
             (
                 Style::default().fg(Color::Rgb(100, 150, 200)), // Light blue for unfocused
                 BorderType::Rounded,
-                None
+                None,
             )
         };
 
         // Get enhanced config items
         let config_items = self.config_items.get(&panel).cloned().unwrap_or_default();
-        
+
         // Create enhanced list items with better formatting
-        let items: Vec<ListItem> = config_items.iter().map(|item| {
-            let value_style = match &item.data_type {
-                ConfigDataType::Integer { .. } => Style::default().fg(Color::Rgb(100, 255, 100)), // Light green
-                ConfigDataType::Float { .. } => Style::default().fg(Color::Rgb(100, 255, 255)), // Light cyan
-                ConfigDataType::Boolean => Style::default().fg(Color::Rgb(255, 255, 100)), // Light yellow
-                ConfigDataType::Color => Style::default().fg(Color::Rgb(255, 150, 255)), // Light magenta
-                ConfigDataType::String => Style::default().fg(Color::White),
-                ConfigDataType::Keyword { .. } => Style::default().fg(Color::Rgb(255, 200, 100)), // Light orange
-            };
+        let items: Vec<ListItem> = config_items
+            .iter()
+            .map(|item| {
+                let value_style = match &item.data_type {
+                    ConfigDataType::Integer { .. } => {
+                        Style::default().fg(Color::Rgb(100, 255, 100))
+                    } // Light green
+                    ConfigDataType::Float { .. } => Style::default().fg(Color::Rgb(100, 255, 255)), // Light cyan
+                    ConfigDataType::Boolean => Style::default().fg(Color::Rgb(255, 255, 100)), // Light yellow
+                    ConfigDataType::Color => Style::default().fg(Color::Rgb(255, 150, 255)), // Light magenta
+                    ConfigDataType::String => Style::default().fg(Color::White),
+                    ConfigDataType::Keyword { .. } => {
+                        Style::default().fg(Color::Rgb(255, 200, 100))
+                    } // Light orange
+                };
 
-            let line = Line::from(vec![
-                Span::styled(&item.key, Style::default().fg(Color::Rgb(200, 200, 255)).bold()),
-                Span::raw(": "),
-                Span::styled(&item.value, value_style.bold()),
-            ]);
+                let line = Line::from(vec![
+                    Span::styled(
+                        &item.key,
+                        Style::default().fg(Color::Rgb(200, 200, 255)).bold(),
+                    ),
+                    Span::raw(": "),
+                    Span::styled(&item.value, value_style.bold()),
+                ]);
 
-            ListItem::new(line)
-        }).collect();
+                ListItem::new(line)
+            })
+            .collect();
 
         // Panel title
         let title = match panel {
             FocusedPanel::General => "General Configuration",
-            FocusedPanel::Input => "Input Configuration", 
+            FocusedPanel::Input => "Input Configuration",
             FocusedPanel::Decoration => "Decoration Configuration",
             FocusedPanel::Animations => "Animations Configuration",
             FocusedPanel::Gestures => "Gestures Configuration",
@@ -1927,7 +2179,10 @@ impl UI {
             Span::styled("↑↓", self.theme.success_style().bold()),
             Span::styled(" Navigate ", Style::default().fg(self.theme.fg_muted)),
             Span::raw("• "),
-            Span::styled("Enter", Style::default().fg(self.theme.accent_primary).bold()),
+            Span::styled(
+                "Enter",
+                Style::default().fg(self.theme.accent_primary).bold(),
+            ),
             Span::styled(" Edit ", Style::default().fg(self.theme.fg_muted)),
             Span::raw("• "),
             Span::styled("S", self.theme.info_style().bold()),
@@ -1962,11 +2217,12 @@ impl UI {
 
     fn render_popup(&self, f: &mut Frame, area: Rect) {
         let popup_area = Self::centered_rect(50, 25, area);
-        
+
         let popup_content = vec![
-            Line::from(vec![
-                Span::styled("ℹ️ Information", Style::default().fg(Color::Cyan).bold()),
-            ]),
+            Line::from(vec![Span::styled(
+                "ℹ️ Information",
+                Style::default().fg(Color::Cyan).bold(),
+            )]),
             Line::from(""),
             Line::from(self.popup_message.as_str()),
             Line::from(""),
@@ -1985,7 +2241,7 @@ impl UI {
                     .border_style(Style::default().fg(Color::Cyan))
                     .border_type(BorderType::Double)
                     .title(" Message ")
-                    .title_style(Style::default().fg(Color::Cyan).bold())
+                    .title_style(Style::default().fg(Color::Cyan).bold()),
             )
             .wrap(Wrap { trim: true });
 
@@ -1995,11 +2251,12 @@ impl UI {
 
     fn render_save_dialog(&self, f: &mut Frame, area: Rect) {
         let popup_area = Self::centered_rect(60, 30, area);
-        
+
         let popup_content = vec![
-            Line::from(vec![
-                Span::styled("💾 Save Configuration", Style::default().fg(Color::Green).bold()),
-            ]),
+            Line::from(vec![Span::styled(
+                "💾 Save Configuration",
+                Style::default().fg(Color::Green).bold(),
+            )]),
             Line::from(""),
             Line::from("Save current configuration changes to file?"),
             Line::from(""),
@@ -2024,7 +2281,7 @@ impl UI {
                     .border_style(Style::default().fg(Color::Green))
                     .border_type(BorderType::Double)
                     .title(" Save Confirmation ")
-                    .title_style(Style::default().fg(Color::Green).bold())
+                    .title_style(Style::default().fg(Color::Green).bold()),
             )
             .wrap(Wrap { trim: true });
 
@@ -2034,11 +2291,12 @@ impl UI {
 
     fn render_reload_dialog(&self, f: &mut Frame, area: Rect) {
         let popup_area = Self::centered_rect(60, 30, area);
-        
+
         let popup_content = vec![
-            Line::from(vec![
-                Span::styled("🔄 Reload Configuration", Style::default().fg(Color::Blue).bold()),
-            ]),
+            Line::from(vec![Span::styled(
+                "🔄 Reload Configuration",
+                Style::default().fg(Color::Blue).bold(),
+            )]),
             Line::from(""),
             Line::from("Reload configuration from Hyprland?"),
             Line::from(""),
@@ -2063,7 +2321,7 @@ impl UI {
                     .border_style(Style::default().fg(Color::Blue))
                     .border_type(BorderType::Double)
                     .title(" Reload Confirmation ")
-                    .title_style(Style::default().fg(Color::Blue).bold())
+                    .title_style(Style::default().fg(Color::Blue).bold()),
             )
             .wrap(Wrap { trim: true });
 
@@ -2073,7 +2331,7 @@ impl UI {
 
     fn render_edit_popup(&self, f: &mut Frame, area: Rect) {
         let popup_area = Self::centered_rect(70, 40, area);
-        
+
         // Get the item being edited
         let (panel, key) = if let Some((panel, key)) = &self.editing_item {
             (panel.clone(), key.clone())
@@ -2083,12 +2341,13 @@ impl UI {
 
         let config_items = self.config_items.get(&panel).cloned().unwrap_or_default();
         let item = config_items.iter().find(|item| item.key == key);
-        
+
         if let Some(item) = item {
             let mut popup_content = vec![
-                Line::from(vec![
-                    Span::styled("✏️ Edit Configuration", Style::default().fg(Color::Magenta).bold()),
-                ]),
+                Line::from(vec![Span::styled(
+                    "✏️ Edit Configuration",
+                    Style::default().fg(Color::Magenta).bold(),
+                )]),
                 Line::from(""),
                 Line::from(vec![
                     Span::styled("Key: ", Style::default().fg(Color::Cyan).bold()),
@@ -2103,7 +2362,10 @@ impl UI {
 
             // Render different edit modes
             match &self.edit_mode {
-                EditMode::Text { current_value, cursor_pos } => {
+                EditMode::Text {
+                    current_value,
+                    cursor_pos,
+                } => {
                     popup_content.push(Line::from(vec![
                         Span::styled("Value: ", Style::default().fg(Color::Green).bold()),
                         Span::raw(current_value),
@@ -2119,16 +2381,23 @@ impl UI {
                         Span::styled("Value: ", Style::default().fg(Color::Green).bold()),
                         Span::styled(
                             if *current_value { "true" } else { "false" },
-                            Style::default().fg(if *current_value { Color::Green } else { Color::Red }).bold()
+                            Style::default()
+                                .fg(if *current_value {
+                                    Color::Green
+                                } else {
+                                    Color::Red
+                                })
+                                .bold(),
                         ),
                     ]));
                     popup_content.push(Line::from(""));
                     popup_content.push(Line::from("Press Space to toggle"));
                 }
                 EditMode::Select { options, selected } => {
-                    popup_content.push(Line::from(vec![
-                        Span::styled("Options:", Style::default().fg(Color::Green).bold()),
-                    ]));
+                    popup_content.push(Line::from(vec![Span::styled(
+                        "Options:",
+                        Style::default().fg(Color::Green).bold(),
+                    )]));
                     for (i, option) in options.iter().enumerate() {
                         let style = if i == *selected {
                             Style::default().fg(Color::Yellow).bold()
@@ -2146,11 +2415,16 @@ impl UI {
                         ]));
                     }
                 }
-                EditMode::Slider { current_value, min, max, .. } => {
+                EditMode::Slider {
+                    current_value,
+                    min,
+                    max,
+                    ..
+                } => {
                     let percentage = (current_value - min) / (max - min);
                     let bar_width = 40;
                     let filled = (percentage * bar_width as f32) as usize;
-                    
+
                     let mut bar = String::new();
                     bar.push('[');
                     for i in 0..bar_width {
@@ -2161,77 +2435,85 @@ impl UI {
                         }
                     }
                     bar.push(']');
-                    
+
                     let current_value_str = current_value.to_string();
                     let min_str = format!("Min: {}", min);
                     let max_str = format!("Max: {}", max);
-                    
+
                     popup_content.push(Line::from(vec![
                         Span::styled("Value: ", Style::default().fg(Color::Green).bold()),
                         Span::styled(current_value_str, Style::default().fg(Color::Cyan).bold()),
                     ]));
                     popup_content.push(Line::from(""));
-                    popup_content.push(Line::from(vec![
-                        Span::styled(bar, Style::default().fg(Color::Blue)),
-                    ]));
+                    popup_content.push(Line::from(vec![Span::styled(
+                        bar,
+                        Style::default().fg(Color::Blue),
+                    )]));
                     popup_content.push(Line::from(vec![
                         Span::styled(min_str, Style::default().fg(Color::Gray)),
                         Span::raw("  "),
                         Span::styled(max_str, Style::default().fg(Color::Gray)),
                     ]));
                 }
-                EditMode::Keybind { modifiers, key, dispatcher, args, editing_field } => {
-                    popup_content.push(Line::from(vec![
-                        Span::styled("Keybind Editor", Style::default().fg(Color::Magenta).bold()),
-                    ]));
+                EditMode::Keybind {
+                    modifiers,
+                    key,
+                    dispatcher,
+                    args,
+                    editing_field,
+                } => {
+                    popup_content.push(Line::from(vec![Span::styled(
+                        "Keybind Editor",
+                        Style::default().fg(Color::Magenta).bold(),
+                    )]));
                     popup_content.push(Line::from(""));
-                    
+
                     // Show each field with highlighting for the currently editing field
                     let mod_style = if *editing_field == KeybindField::Modifiers {
                         Style::default().fg(Color::Yellow).bold()
                     } else {
                         Style::default().fg(Color::White)
                     };
-                    
+
                     let key_style = if *editing_field == KeybindField::Key {
                         Style::default().fg(Color::Yellow).bold()
                     } else {
                         Style::default().fg(Color::White)
                     };
-                    
+
                     let dispatcher_style = if *editing_field == KeybindField::Dispatcher {
                         Style::default().fg(Color::Yellow).bold()
                     } else {
                         Style::default().fg(Color::White)
                     };
-                    
+
                     let args_style = if *editing_field == KeybindField::Args {
                         Style::default().fg(Color::Yellow).bold()
                     } else {
                         Style::default().fg(Color::White)
                     };
-                    
+
                     let modifiers_text = modifiers.join(" + ");
                     popup_content.push(Line::from(vec![
                         Span::styled("Modifiers: ", Style::default().fg(Color::Cyan).bold()),
                         Span::styled(modifiers_text, mod_style),
                     ]));
-                    
+
                     popup_content.push(Line::from(vec![
                         Span::styled("Key: ", Style::default().fg(Color::Cyan).bold()),
                         Span::styled(key, key_style),
                     ]));
-                    
+
                     popup_content.push(Line::from(vec![
                         Span::styled("Action: ", Style::default().fg(Color::Cyan).bold()),
                         Span::styled(dispatcher, dispatcher_style),
                     ]));
-                    
+
                     popup_content.push(Line::from(vec![
                         Span::styled("Arguments: ", Style::default().fg(Color::Cyan).bold()),
                         Span::styled(args, args_style),
                     ]));
-                    
+
                     popup_content.push(Line::from(""));
                     popup_content.push(Line::from(vec![
                         Span::styled("Tab", Style::default().fg(Color::Yellow).bold()),
@@ -2240,45 +2522,51 @@ impl UI {
                         Span::styled(" - Edit", Style::default().fg(Color::Gray)),
                     ]));
                 }
-                EditMode::Rule { rule_type, pattern, action, editing_field } => {
-                    popup_content.push(Line::from(vec![
-                        Span::styled("Rule Editor", Style::default().fg(Color::Magenta).bold()),
-                    ]));
+                EditMode::Rule {
+                    rule_type,
+                    pattern,
+                    action,
+                    editing_field,
+                } => {
+                    popup_content.push(Line::from(vec![Span::styled(
+                        "Rule Editor",
+                        Style::default().fg(Color::Magenta).bold(),
+                    )]));
                     popup_content.push(Line::from(""));
 
                     let rule_type_name = match rule_type {
                         RuleType::Window => "Window Rule",
-                        RuleType::Layer => "Layer Rule", 
+                        RuleType::Layer => "Layer Rule",
                         RuleType::Workspace => "Workspace Rule",
                     };
-                    
+
                     popup_content.push(Line::from(vec![
                         Span::styled("Type: ", Style::default().fg(Color::Cyan).bold()),
                         Span::styled(rule_type_name, Style::default().fg(Color::White)),
                     ]));
-                    
+
                     let pattern_style = if *editing_field == RuleField::Pattern {
                         Style::default().fg(Color::Yellow).bold()
                     } else {
                         Style::default().fg(Color::White)
                     };
-                    
+
                     let action_style = if *editing_field == RuleField::Action {
                         Style::default().fg(Color::Yellow).bold()
                     } else {
                         Style::default().fg(Color::White)
                     };
-                    
+
                     popup_content.push(Line::from(vec![
                         Span::styled("Pattern: ", Style::default().fg(Color::Cyan).bold()),
                         Span::styled(pattern, pattern_style),
                     ]));
-                    
+
                     popup_content.push(Line::from(vec![
                         Span::styled("Action: ", Style::default().fg(Color::Cyan).bold()),
                         Span::styled(action, action_style),
                     ]));
-                    
+
                     popup_content.push(Line::from(""));
                     popup_content.push(Line::from(vec![
                         Span::styled("Tab", Style::default().fg(Color::Yellow).bold()),
@@ -2298,13 +2586,17 @@ impl UI {
             // Add suggestions if available
             if !item.suggestions.is_empty() {
                 popup_content.push(Line::from(""));
-                popup_content.push(Line::from(vec![
-                    Span::styled("Suggestions: ", Style::default().fg(Color::Yellow).bold()),
-                ]));
+                popup_content.push(Line::from(vec![Span::styled(
+                    "Suggestions: ",
+                    Style::default().fg(Color::Yellow).bold(),
+                )]));
                 let suggestions_text = item.suggestions.join(", ");
                 popup_content.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled(suggestions_text, Style::default().fg(Color::Rgb(200, 200, 200))),
+                    Span::styled(
+                        suggestions_text,
+                        Style::default().fg(Color::Rgb(200, 200, 200)),
+                    ),
                 ]));
             }
 
@@ -2324,7 +2616,7 @@ impl UI {
                         .border_style(Style::default().fg(Color::Magenta))
                         .border_type(BorderType::Double)
                         .title(" Edit Value ")
-                        .title_style(Style::default().fg(Color::Magenta).bold())
+                        .title_style(Style::default().fg(Color::Magenta).bold()),
                 )
                 .wrap(Wrap { trim: true });
 
@@ -2422,8 +2714,12 @@ impl UI {
                 ListItem::new("windowrule = opacity 0.8 0.8, ^(Alacritty)$"),
                 ListItem::new("windowrule = size 800 600, ^(pavucontrol)$"),
                 ListItem::new("windowrule = center, ^(pavucontrol)$"),
-                ListItem::new("windowrulev2 = float, class:^(firefox)$, title:^(Picture-in-Picture)$"),
-                ListItem::new("windowrulev2 = pin, class:^(firefox)$, title:^(Picture-in-Picture)$"),
+                ListItem::new(
+                    "windowrulev2 = float, class:^(firefox)$, title:^(Picture-in-Picture)$",
+                ),
+                ListItem::new(
+                    "windowrulev2 = pin, class:^(firefox)$, title:^(Picture-in-Picture)$",
+                ),
                 ListItem::new("windowrulev2 = opacity 0.9 0.9, class:^(Code)$"),
                 ListItem::new("windowrulev2 = workspace 2, class:^(firefox)$"),
             ],
@@ -2451,7 +2747,10 @@ impl UI {
     }
 
     fn get_panel_items_count(&self, panel: FocusedPanel) -> usize {
-        self.config_items.get(&panel).map(|items| items.len()).unwrap_or(0)
+        self.config_items
+            .get(&panel)
+            .map(|items| items.len())
+            .unwrap_or(0)
     }
 
     #[allow(dead_code)]
@@ -2471,7 +2770,7 @@ impl UI {
 
     pub fn scroll_up(&mut self) {
         let items_count = self.get_panel_items_count(self.current_tab);
-        
+
         if items_count == 0 {
             return;
         }
@@ -2487,7 +2786,7 @@ impl UI {
 
     pub fn scroll_down(&mut self) {
         let items_count = self.get_panel_items_count(self.current_tab);
-        
+
         if items_count == 0 {
             return;
         }
@@ -2503,80 +2802,91 @@ impl UI {
 
     pub async fn start_editing(&mut self) -> Result<(), anyhow::Error> {
         // Get the currently selected item from current tab
-        let config_items = self.config_items.get(&self.current_tab).cloned().unwrap_or_default();
+        let config_items = self
+            .config_items
+            .get(&self.current_tab)
+            .cloned()
+            .unwrap_or_default();
         if config_items.is_empty() {
             return Ok(());
         }
 
         let list_state = self.get_current_list_state();
         let selected_index = list_state.selected().unwrap_or(0);
-        
+
         if let Some(item) = config_items.get(selected_index) {
             self.editing_item = Some((self.current_tab, item.key.clone()));
-            
+
             // Set edit mode based on data type and panel
-            self.edit_mode = if self.current_tab == FocusedPanel::Binds && item.key.starts_with("bind_") {
-                // Special handling for keybinds
-                self.parse_keybind_for_editing(&item.value)
-            } else if (self.current_tab == FocusedPanel::WindowRules && item.key.starts_with("window_rule_")) ||
-                      (self.current_tab == FocusedPanel::LayerRules && (item.key.starts_with("layer_rule_") || item.key.starts_with("workspace_rule_"))) {
-                // Special handling for rules
-                self.parse_rule_for_editing(&item.value, &self.current_tab)
-            } else {
-                match &item.data_type {
-                    ConfigDataType::Boolean => {
-                        let current_value = item.value.to_lowercase() == "true";
-                        EditMode::Boolean { current_value }
-                    }
-                    ConfigDataType::Integer { min, max } => {
-                        if let (Some(min_val), Some(max_val)) = (min, max) {
-                            let current_value = item.value.parse::<f32>().unwrap_or(*min_val as f32);
-                            EditMode::Slider {
-                                current_value,
-                                min: *min_val as f32,
-                                max: *max_val as f32,
-                                step: 1.0,
-                            }
-                        } else {
-                            EditMode::Text {
-                                current_value: item.value.clone(),
-                                cursor_pos: item.value.len(),
+            self.edit_mode =
+                if self.current_tab == FocusedPanel::Binds && item.key.starts_with("bind_") {
+                    // Special handling for keybinds
+                    self.parse_keybind_for_editing(&item.value)
+                } else if (self.current_tab == FocusedPanel::WindowRules
+                    && item.key.starts_with("window_rule_"))
+                    || (self.current_tab == FocusedPanel::LayerRules
+                        && (item.key.starts_with("layer_rule_")
+                            || item.key.starts_with("workspace_rule_")))
+                {
+                    // Special handling for rules
+                    self.parse_rule_for_editing(&item.value, &self.current_tab)
+                } else {
+                    match &item.data_type {
+                        ConfigDataType::Boolean => {
+                            let current_value = item.value.to_lowercase() == "true";
+                            EditMode::Boolean { current_value }
+                        }
+                        ConfigDataType::Integer { min, max } => {
+                            if let (Some(min_val), Some(max_val)) = (min, max) {
+                                let current_value =
+                                    item.value.parse::<f32>().unwrap_or(*min_val as f32);
+                                EditMode::Slider {
+                                    current_value,
+                                    min: *min_val as f32,
+                                    max: *max_val as f32,
+                                    step: 1.0,
+                                }
+                            } else {
+                                EditMode::Text {
+                                    current_value: item.value.clone(),
+                                    cursor_pos: item.value.len(),
+                                }
                             }
                         }
-                    }
-                    ConfigDataType::Float { min, max } => {
-                        if let (Some(min_val), Some(max_val)) = (min, max) {
-                            let current_value = item.value.parse::<f32>().unwrap_or(*min_val);
-                            EditMode::Slider {
-                                current_value,
-                                min: *min_val,
-                                max: *max_val,
-                                step: 0.1,
-                            }
-                        } else {
-                            EditMode::Text {
-                                current_value: item.value.clone(),
-                                cursor_pos: item.value.len(),
+                        ConfigDataType::Float { min, max } => {
+                            if let (Some(min_val), Some(max_val)) = (min, max) {
+                                let current_value = item.value.parse::<f32>().unwrap_or(*min_val);
+                                EditMode::Slider {
+                                    current_value,
+                                    min: *min_val,
+                                    max: *max_val,
+                                    step: 0.1,
+                                }
+                            } else {
+                                EditMode::Text {
+                                    current_value: item.value.clone(),
+                                    cursor_pos: item.value.len(),
+                                }
                             }
                         }
-                    }
-                    ConfigDataType::Keyword { options } => {
-                        let selected = options.iter().position(|opt| opt == &item.value).unwrap_or(0);
-                        EditMode::Select {
-                            options: options.clone(),
-                            selected,
+                        ConfigDataType::Keyword { options } => {
+                            let selected = options
+                                .iter()
+                                .position(|opt| opt == &item.value)
+                                .unwrap_or(0);
+                            EditMode::Select {
+                                options: options.clone(),
+                                selected,
+                            }
                         }
-                    }
-                    _ => {
-                        EditMode::Text {
+                        _ => EditMode::Text {
                             current_value: item.value.clone(),
                             cursor_pos: item.value.len(),
-                        }
+                        },
                     }
-                }
-            };
+                };
         }
-        
+
         Ok(())
     }
 
@@ -2585,18 +2895,24 @@ impl UI {
         if let Some((key_part, command_part)) = display_string.split_once(" → ") {
             let key_part = key_part.trim();
             let command_part = command_part.trim();
-            
+
             // Parse modifiers and key
             let (modifiers, key) = if let Some((mods, k)) = key_part.rsplit_once(" + ") {
-                (mods.split(" + ").map(|s| s.to_string()).collect(), k.to_string())
+                (
+                    mods.split(" + ").map(|s| s.to_string()).collect(),
+                    k.to_string(),
+                )
             } else {
                 (vec![], key_part.to_string())
             };
-            
+
             // Parse dispatcher and args
             let (dispatcher, args) = if let Some((disp, arg_part)) = command_part.split_once(' ') {
                 let args = if arg_part.starts_with('[') && arg_part.ends_with(']') {
-                    arg_part.trim_start_matches('[').trim_end_matches(']').to_string()
+                    arg_part
+                        .trim_start_matches('[')
+                        .trim_end_matches(']')
+                        .to_string()
                 } else {
                     arg_part.to_string()
                 };
@@ -2604,7 +2920,7 @@ impl UI {
             } else {
                 (command_part.to_string(), String::new())
             };
-            
+
             return EditMode::Keybind {
                 modifiers,
                 key,
@@ -2613,7 +2929,7 @@ impl UI {
                 editing_field: KeybindField::Dispatcher, // Start with dispatcher
             };
         }
-        
+
         // Fallback to text editing
         EditMode::Text {
             current_value: display_string.to_string(),
@@ -2638,23 +2954,34 @@ impl UI {
                         format!("{:.2}", current_value)
                     }
                 }
-                EditMode::Keybind { modifiers, key, dispatcher, args, .. } => {
+                EditMode::Keybind {
+                    modifiers,
+                    key,
+                    dispatcher,
+                    args,
+                    ..
+                } => {
                     // Create display string for keybind
                     let mod_string = if modifiers.is_empty() {
                         String::new()
                     } else {
                         format!("{} + ", modifiers.join(" + "))
                     };
-                    
+
                     let args_string = if args.is_empty() {
                         String::new()
                     } else {
                         format!(" [{}]", args)
                     };
-                    
+
                     format!("{}{} → {}{}", mod_string, key, dispatcher, args_string)
                 }
-                EditMode::Rule { rule_type, pattern, action, .. } => {
+                EditMode::Rule {
+                    rule_type,
+                    pattern,
+                    action,
+                    ..
+                } => {
                     // Format rule for display and application
                     match rule_type {
                         RuleType::Window => format!("windowrule = {}, {}", action, pattern),
@@ -2677,11 +3004,14 @@ impl UI {
 
             self.cancel_edit();
         }
-        
+
         Ok(())
     }
 
-    pub async fn apply_edit_with_hyprctl(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> Result<(), anyhow::Error> {
+    pub async fn apply_edit_with_hyprctl(
+        &mut self,
+        hyprctl: &crate::hyprctl::HyprCtl,
+    ) -> Result<(), anyhow::Error> {
         if let Some((panel, key)) = &self.editing_item.clone() {
             let new_value = match &self.edit_mode {
                 EditMode::Text { current_value, .. } => current_value.clone(),
@@ -2697,23 +3027,34 @@ impl UI {
                         format!("{:.2}", current_value)
                     }
                 }
-                EditMode::Keybind { modifiers, key, dispatcher, args, .. } => {
+                EditMode::Keybind {
+                    modifiers,
+                    key,
+                    dispatcher,
+                    args,
+                    ..
+                } => {
                     // Create display string for keybind
                     let mod_string = if modifiers.is_empty() {
                         String::new()
                     } else {
                         format!("{} + ", modifiers.join(" + "))
                     };
-                    
+
                     let args_string = if args.is_empty() {
                         String::new()
                     } else {
                         format!(" [{}]", args)
                     };
-                    
+
                     format!("{}{} → {}{}", mod_string, key, dispatcher, args_string)
                 }
-                EditMode::Rule { rule_type, pattern, action, .. } => {
+                EditMode::Rule {
+                    rule_type,
+                    pattern,
+                    action,
+                    ..
+                } => {
                     // Format rule for display and application
                     match rule_type {
                         RuleType::Window => format!("windowrule = {}, {}", action, pattern),
@@ -2726,7 +3067,7 @@ impl UI {
 
             // Get the hyprctl key for this configuration option
             let hypr_key = self.get_hyprctl_key(panel, key);
-            
+
             if let Some(hypr_key) = hypr_key {
                 // Apply the change via hyprctl
                 match hyprctl.set_option(&hypr_key, &new_value).await {
@@ -2763,63 +3104,59 @@ impl UI {
 
             self.cancel_edit();
         }
-        
+
         Ok(())
     }
 
     fn get_hyprctl_key(&self, panel: &FocusedPanel, key: &str) -> Option<String> {
         match panel {
-            FocusedPanel::General => {
-                match key {
-                    "gaps_in" => Some("general:gaps_in".to_string()),
-                    "gaps_out" => Some("general:gaps_out".to_string()),
-                    "border_size" => Some("general:border_size".to_string()),
-                    "col.active_border" => Some("general:col.active_border".to_string()),
-                    "col.inactive_border" => Some("general:col.inactive_border".to_string()),
-                    _ => None,
+            FocusedPanel::General => match key {
+                "gaps_in" => Some("general:gaps_in".to_string()),
+                "gaps_out" => Some("general:gaps_out".to_string()),
+                "border_size" => Some("general:border_size".to_string()),
+                "col.active_border" => Some("general:col.active_border".to_string()),
+                "col.inactive_border" => Some("general:col.inactive_border".to_string()),
+                _ => None,
+            },
+            FocusedPanel::Input => match key {
+                "kb_layout" => Some("input:kb_layout".to_string()),
+                "follow_mouse" => Some("input:follow_mouse".to_string()),
+                "sensitivity" => Some("input:sensitivity".to_string()),
+                _ => None,
+            },
+            FocusedPanel::Decoration => match key {
+                "rounding" => Some("decoration:rounding".to_string()),
+                "blur.enabled" => Some("decoration:blur:enabled".to_string()),
+                "blur.size" => Some("decoration:blur:size".to_string()),
+                _ => None,
+            },
+            FocusedPanel::Animations => match key {
+                "animations.enabled" => Some("animations:enabled".to_string()),
+                _ => None,
+            },
+            FocusedPanel::Gestures => match key {
+                "gestures.workspace_swipe" => Some("gestures:workspace_swipe".to_string()),
+                "gestures.workspace_swipe_fingers" => {
+                    Some("gestures:workspace_swipe_fingers".to_string())
                 }
-            }
-            FocusedPanel::Input => {
-                match key {
-                    "kb_layout" => Some("input:kb_layout".to_string()),
-                    "follow_mouse" => Some("input:follow_mouse".to_string()),
-                    "sensitivity" => Some("input:sensitivity".to_string()),
-                    _ => None,
+                "gestures.workspace_swipe_distance" => {
+                    Some("gestures:workspace_swipe_distance".to_string())
                 }
-            }
-            FocusedPanel::Decoration => {
-                match key {
-                    "rounding" => Some("decoration:rounding".to_string()),
-                    "blur.enabled" => Some("decoration:blur:enabled".to_string()),
-                    "blur.size" => Some("decoration:blur:size".to_string()),
-                    _ => None,
+                "gestures.workspace_swipe_invert" => {
+                    Some("gestures:workspace_swipe_invert".to_string())
                 }
-            }
-            FocusedPanel::Animations => {
-                match key {
-                    "animations.enabled" => Some("animations:enabled".to_string()),
-                    _ => None,
+                _ => None,
+            },
+            FocusedPanel::Misc => match key {
+                "misc.disable_hyprland_logo" => Some("misc:disable_hyprland_logo".to_string()),
+                "misc.disable_splash_rendering" => {
+                    Some("misc:disable_splash_rendering".to_string())
                 }
-            }
-            FocusedPanel::Gestures => {
-                match key {
-                    "gestures.workspace_swipe" => Some("gestures:workspace_swipe".to_string()),
-                    "gestures.workspace_swipe_fingers" => Some("gestures:workspace_swipe_fingers".to_string()),
-                    "gestures.workspace_swipe_distance" => Some("gestures:workspace_swipe_distance".to_string()),
-                    "gestures.workspace_swipe_invert" => Some("gestures:workspace_swipe_invert".to_string()),
-                    _ => None,
-                }
-            }
-            FocusedPanel::Misc => {
-                match key {
-                    "misc.disable_hyprland_logo" => Some("misc:disable_hyprland_logo".to_string()),
-                    "misc.disable_splash_rendering" => Some("misc:disable_splash_rendering".to_string()),
-                    "misc.mouse_move_enables_dpms" => Some("misc:mouse_move_enables_dpms".to_string()),
-                    "misc.vfr" => Some("misc:vfr".to_string()),
-                    "misc.vrr" => Some("misc:vrr".to_string()),
-                    _ => None,
-                }
-            }
+                "misc.mouse_move_enables_dpms" => Some("misc:mouse_move_enables_dpms".to_string()),
+                "misc.vfr" => Some("misc:vfr".to_string()),
+                "misc.vrr" => Some("misc:vrr".to_string()),
+                _ => None,
+            },
             // Binds, WindowRules, and LayerRules need different hyprctl commands
             _ => None,
         }
@@ -2875,11 +3212,12 @@ impl UI {
         }
 
         let query = self.search_query.to_lowercase();
-        items.iter()
+        items
+            .iter()
             .filter(|item| {
-                item.key.to_lowercase().contains(&query) ||
-                item.value.to_lowercase().contains(&query) ||
-                item.description.to_lowercase().contains(&query)
+                item.key.to_lowercase().contains(&query)
+                    || item.value.to_lowercase().contains(&query)
+                    || item.description.to_lowercase().contains(&query)
             })
             .cloned()
             .collect()
@@ -2907,8 +3245,17 @@ impl UI {
                     })
                     .border_type(BorderType::Rounded)
                     .title(if !self.search_query.is_empty() {
-                        format!(" Search (showing {} results) ", 
-                               self.filter_items(&self.config_items.get(&self.current_tab).cloned().unwrap_or_default()).len())
+                        format!(
+                            " Search (showing {} results) ",
+                            self.filter_items(
+                                &self
+                                    .config_items
+                                    .get(&self.current_tab)
+                                    .cloned()
+                                    .unwrap_or_default()
+                            )
+                            .len()
+                        )
                     } else {
                         " Search ".to_string()
                     })

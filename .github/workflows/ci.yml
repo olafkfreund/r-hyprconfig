@@ -112,6 +112,10 @@ jobs:
   # Documentation
   docs:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     steps:
     - uses: actions/checkout@v4
     
@@ -128,7 +132,7 @@ jobs:
     
     - name: Deploy documentation
       if: github.ref == 'refs/heads/main'
-      uses: peaceiris/actions-gh-pages@v3
+      uses: peaceiris/actions-gh-pages@v4
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         publish_dir: ./target/doc

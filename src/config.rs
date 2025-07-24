@@ -1,9 +1,9 @@
+use crate::theme::ColorScheme;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::fs as async_fs;
-use crate::theme::ColorScheme;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -32,18 +32,18 @@ impl Default for Config {
 impl Config {
     pub async fn load() -> Result<Self> {
         let config_path = Self::get_config_path()?;
-        
+
         if config_path.exists() {
             let content = async_fs::read_to_string(&config_path)
                 .await
                 .context("Failed to read config file")?;
-            
-            let mut config: Config = toml::from_str(&content)
-                .context("Failed to parse config file")?;
-            
+
+            let mut config: Config =
+                toml::from_str(&content).context("Failed to parse config file")?;
+
             // Ensure hyprland config path exists
             config.validate_hyprland_config_path().await?;
-            
+
             Ok(config)
         } else {
             let config = Self::default();
@@ -54,7 +54,7 @@ impl Config {
 
     pub async fn save(&self) -> Result<()> {
         let config_path = Self::get_config_path()?;
-        
+
         // Create config directory if it doesn't exist
         if let Some(parent) = config_path.parent() {
             async_fs::create_dir_all(parent)
@@ -62,9 +62,8 @@ impl Config {
                 .context("Failed to create config directory")?;
         }
 
-        let content = toml::to_string_pretty(self)
-            .context("Failed to serialize config")?;
-        
+        let content = toml::to_string_pretty(self).context("Failed to serialize config")?;
+
         async_fs::write(&config_path, content)
             .await
             .context("Failed to write config file")?;
@@ -76,7 +75,7 @@ impl Config {
         let config_dir = dirs::config_dir()
             .context("Failed to get config directory")?
             .join("r-hyprconfig");
-        
+
         Ok(config_dir.join("config.toml"))
     }
 
@@ -90,9 +89,9 @@ impl Config {
 
     fn detect_nixos() -> bool {
         // Check if we're running on NixOS
-        Path::new("/etc/NIXOS").exists() || 
-        std::env::var("NIX_STORE").is_ok() ||
-        which::which("nixos-rebuild").is_ok()
+        Path::new("/etc/NIXOS").exists()
+            || std::env::var("NIX_STORE").is_ok()
+            || which::which("nixos-rebuild").is_ok()
     }
 
     async fn validate_hyprland_config_path(&mut self) -> Result<()> {
@@ -139,7 +138,8 @@ impl Config {
         }
 
         let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
-        let backup_path = self.hyprland_config_path
+        let backup_path = self
+            .hyprland_config_path
             .with_extension(format!("conf.backup.{}", timestamp));
 
         async_fs::copy(&self.hyprland_config_path, &backup_path)
@@ -149,7 +149,13 @@ impl Config {
         Ok(backup_path)
     }
 
-    pub async fn save_hyprland_config_with_rules(&self, options: &HashMap<String, String>, keybinds: &[String], window_rules: &[String], layer_rules: &[String]) -> Result<()> {
+    pub async fn save_hyprland_config_with_rules(
+        &self,
+        options: &HashMap<String, String>,
+        keybinds: &[String],
+        window_rules: &[String],
+        layer_rules: &[String],
+    ) -> Result<()> {
         if self.nixos_mode {
             return self.save_nixos_config(options).await;
         }
@@ -163,7 +169,13 @@ impl Config {
             .unwrap_or_else(|_| String::new());
 
         // Parse and update config with options, keybinds, and rules
-        let updated_content = self.update_config_content_with_rules(&current_content, options, keybinds, window_rules, layer_rules)?;
+        let updated_content = self.update_config_content_with_rules(
+            &current_content,
+            options,
+            keybinds,
+            window_rules,
+            layer_rules,
+        )?;
 
         // Write updated config
         async_fs::write(&self.hyprland_config_path, updated_content)
@@ -203,40 +215,53 @@ impl Config {
         // For NixOS, we can't directly modify the config file
         // Instead, we'll save the configuration to a separate file
         // that can be imported or referenced in the NixOS configuration
-        
-        let nixos_config_path = self.hyprland_config_path
+
+        let nixos_config_path = self
+            .hyprland_config_path
             .parent()
             .unwrap_or(Path::new("/tmp"))
             .join("r-hyprconfig-generated.conf");
 
         let content = self.generate_nixos_config_content(_options)?;
-        
+
         async_fs::write(&nixos_config_path, content)
             .await
             .context("Failed to write NixOS compatible config")?;
 
         println!("NixOS mode: Configuration saved to {:?}", nixos_config_path);
-        println!("Please import this file in your NixOS configuration or copy the settings manually.");
+        println!(
+            "Please import this file in your NixOS configuration or copy the settings manually."
+        );
 
         Ok(())
     }
 
-    fn update_config_content_with_rules(&self, content: &str, options: &HashMap<String, String>, keybinds: &[String], window_rules: &[String], layer_rules: &[String]) -> Result<String> {
+    fn update_config_content_with_rules(
+        &self,
+        content: &str,
+        options: &HashMap<String, String>,
+        keybinds: &[String],
+        window_rules: &[String],
+        layer_rules: &[String],
+    ) -> Result<String> {
         let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
-        
+
         // Remove existing keybinds, window rules, and layer rules
         lines.retain(|line| {
             let trimmed = line.trim();
-            !trimmed.starts_with("bind") && 
-            !trimmed.starts_with("windowrule") && 
-            !trimmed.starts_with("layerrule") &&
-            !trimmed.starts_with("blurls")
+            !trimmed.starts_with("bind")
+                && !trimmed.starts_with("windowrule")
+                && !trimmed.starts_with("layerrule")
+                && !trimmed.starts_with("blurls")
         });
-        
+
         // Update configuration options using existing method
         let content_with_options = self.update_config_content(&lines.join("\n"), options)?;
-        let mut updated_lines: Vec<String> = content_with_options.lines().map(|s| s.to_string()).collect();
-        
+        let mut updated_lines: Vec<String> = content_with_options
+            .lines()
+            .map(|s| s.to_string())
+            .collect();
+
         // Add new keybinds
         if !keybinds.is_empty() {
             updated_lines.push(String::new());
@@ -245,7 +270,7 @@ impl Config {
                 updated_lines.push(keybind.clone());
             }
         }
-        
+
         // Add new window rules
         if !window_rules.is_empty() {
             updated_lines.push(String::new());
@@ -254,7 +279,7 @@ impl Config {
                 updated_lines.push(rule.clone());
             }
         }
-        
+
         // Add new layer rules
         if !layer_rules.is_empty() {
             updated_lines.push(String::new());
@@ -263,12 +288,16 @@ impl Config {
                 updated_lines.push(rule.clone());
             }
         }
-        
+
         Ok(updated_lines.join("\n"))
     }
 
     #[allow(dead_code)]
-    fn update_config_content(&self, content: &str, options: &HashMap<String, String>) -> Result<String> {
+    fn update_config_content(
+        &self,
+        content: &str,
+        options: &HashMap<String, String>,
+    ) -> Result<String> {
         let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
         let mut updated_options = HashMap::new();
 
@@ -288,21 +317,22 @@ impl Config {
                     option.as_str()
                 };
 
-                if trimmed.starts_with(&format!("{} =", option_prefix)) ||
-                   trimmed.starts_with(&format!("{}=", option_prefix)) {
+                if trimmed.starts_with(&format!("{} =", option_prefix))
+                    || trimmed.starts_with(&format!("{}=", option_prefix))
+                {
                     line_updates.push((i, format!("    {} = {}", option_prefix, value)));
                     updated_options.insert(option.clone(), value.clone());
                     break;
                 }
             }
         }
-        
+
         // Apply the collected updates
         for (i, new_line) in line_updates {
             lines[i] = new_line;
         }
 
-        // Add options that weren't found in the existing config  
+        // Add options that weren't found in the existing config
         for (option, value) in options {
             if !updated_options.contains_key(option) {
                 let _section = if let Some((section, option_name)) = option.split_once(':') {
@@ -340,7 +370,7 @@ impl Config {
                     lines.push(format!("{} = {}", option, value));
                     "global"
                 };
-                
+
                 updated_options.insert(option.clone(), value.clone());
             }
         }
@@ -356,14 +386,16 @@ impl Config {
 
         // Group options by section
         let mut sections: HashMap<String, Vec<(String, String)>> = HashMap::new();
-        
+
         for (option, value) in options {
             if let Some((section, option_name)) = option.split_once(':') {
-                sections.entry(section.to_string())
+                sections
+                    .entry(section.to_string())
                     .or_default()
                     .push((option_name.to_string(), value.clone()));
             } else {
-                sections.entry("general".to_string())
+                sections
+                    .entry("general".to_string())
                     .or_default()
                     .push((option.clone(), value.clone()));
             }
@@ -405,7 +437,7 @@ impl Config {
         let content = async_fs::read_to_string(&self.hyprland_config_path)
             .await
             .context("Failed to read Hyprland config file")?;
-        
+
         Ok(HyprlandConfigFile::parse(&content)?)
     }
 }
@@ -423,7 +455,7 @@ pub struct HyprlandConfigFile {
 #[derive(Debug, Clone)]
 pub struct ParsedKeybind {
     #[allow(dead_code)]
-    pub bind_type: String,  // bind, bindm, binde, etc.
+    pub bind_type: String, // bind, bindm, binde, etc.
     pub modifiers: String,
     pub key: String,
     pub dispatcher: String,
@@ -439,16 +471,16 @@ impl HyprlandConfigFile {
         let mut layer_rules = Vec::new();
         let mut workspace_rules = Vec::new();
         let mut options = HashMap::new();
-        
+
         for line in content.lines() {
             let line = line.trim();
-            
+
             // Skip empty lines and comments
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
-            
-            // Parse keybinds  
+
+            // Parse keybinds
             if line.starts_with("bind") {
                 if let Some(keybind) = Self::parse_keybind_line(line) {
                     keybinds.push(keybind);
@@ -483,7 +515,7 @@ impl HyprlandConfigFile {
                 }
             }
         }
-        
+
         Ok(Self {
             keybinds,
             window_rules,
@@ -492,26 +524,26 @@ impl HyprlandConfigFile {
             options,
         })
     }
-    
+
     fn parse_keybind_line(line: &str) -> Option<ParsedKeybind> {
         // Parse different bind formats:
         // bind = SUPER, N, exec, swaync-client -t -sw
         // bindm = $mainMod, mouse:272, movewindow
         // binde = $mainMod, l, resizeactive, 30 0
-        
+
         let parts: Vec<&str> = line.splitn(2, '=').collect();
         if parts.len() != 2 {
             return None;
         }
-        
+
         let bind_type = parts[0].trim().to_string();
         let bind_content = parts[1].trim();
-        
+
         // Split by commas, but be careful about commas in arguments
         let mut bind_parts = Vec::new();
         let mut current_part = String::new();
         let mut paren_depth = 0;
-        
+
         for ch in bind_content.chars() {
             match ch {
                 ',' if paren_depth == 0 => {
@@ -532,7 +564,7 @@ impl HyprlandConfigFile {
         if !current_part.trim().is_empty() {
             bind_parts.push(current_part.trim().to_string());
         }
-        
+
         if bind_parts.len() >= 3 {
             let modifiers = bind_parts[0].clone();
             let key = bind_parts[1].clone();
@@ -542,7 +574,7 @@ impl HyprlandConfigFile {
             } else {
                 String::new()
             };
-            
+
             Some(ParsedKeybind {
                 bind_type,
                 modifiers,

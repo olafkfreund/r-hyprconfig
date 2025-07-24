@@ -2,10 +2,10 @@ use anyhow::Result;
 use clap::Parser;
 
 mod app;
-mod hyprctl;
-mod ui;
 mod config;
+mod hyprctl;
 mod theme;
+mod ui;
 
 use app::App;
 
@@ -16,7 +16,7 @@ struct Cli {
     /// Enable debug mode
     #[arg(short, long)]
     debug: bool,
-    
+
     /// Test save functionality without running TUI
     #[arg(long)]
     test_save: bool,
@@ -25,14 +25,14 @@ struct Cli {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    
+
     let mut app = App::new(cli.debug).await?;
-    
+
     if cli.test_save {
         app.test_save_functionality().await?;
     } else {
         app.run().await?;
     }
-    
+
     Ok(())
 }

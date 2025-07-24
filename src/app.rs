@@ -93,18 +93,18 @@ pub struct App {
 impl App {
     pub async fn test_save_functionality(&mut self) -> Result<()> {
         eprintln!("=== Testing Save Functionality ===");
-        
+
         // Collect all data that would be saved
         let config_changes = self.ui.collect_all_config_changes();
         let keybinds = self.ui.collect_keybinds();
         let window_rules = self.ui.collect_window_rules();
         let layer_rules = self.ui.collect_layer_rules();
-        
+
         eprintln!("Config changes: {}", config_changes.len());
         eprintln!("Keybinds: {}", keybinds.len());
         eprintln!("Window rules: {}", window_rules.len());
         eprintln!("Layer rules: {}", layer_rules.len());
-        
+
         // Test the save without actually writing to avoid modifying user's config
         eprintln!("=== Save functionality test complete ===");
         Ok(())
@@ -112,7 +112,7 @@ impl App {
 
     pub async fn new(debug: bool) -> Result<Self> {
         let config = Config::load().await?;
-        
+
         // Try to initialize hyprctl, but don't fail if it's not available
         let hyprctl = match HyprCtl::new().await {
             Ok(hyprctl) => hyprctl,
@@ -123,12 +123,12 @@ impl App {
                 HyprCtl::new_disconnected()
             }
         };
-        
+
         let mut ui = UI::new();
-        
+
         // Set theme from config
         ui.set_theme(config.theme.clone());
-        
+
         // Load current configuration from hyprctl or config file
         if let Err(e) = ui.load_current_config(&hyprctl).await {
             eprintln!("Warning: Failed to load current configuration: {}", e);
@@ -200,19 +200,19 @@ impl App {
         if self.ui.show_save_dialog {
             return self.handle_save_dialog_key(key).await;
         }
-        
+
         if self.ui.show_reload_dialog {
             return self.handle_reload_dialog_key(key).await;
         }
-        
+
         if self.ui.show_popup {
             return self.handle_popup_key(key).await;
         }
-        
+
         if self.ui.search_mode {
             return self.handle_search_key(key).await;
         }
-        
+
         if self.ui.edit_mode != crate::ui::EditMode::None {
             return self.handle_edit_key(key).await;
         }
@@ -250,7 +250,7 @@ impl App {
                 // TODO: Add item functionality
             }
             KeyCode::Char('d') | KeyCode::Char('D') => {
-                // TODO: Delete item functionality  
+                // TODO: Delete item functionality
             }
             KeyCode::Char('i') | KeyCode::Char('I') => {
                 // TODO: Insert/Add item functionality
@@ -271,7 +271,10 @@ impl App {
             KeyCode::F(1) => {
                 // Show theme selection menu or help
                 self.ui.show_popup = true;
-                self.ui.popup_message = format!("Current theme: {} (Press T to cycle themes)", self.config.theme);
+                self.ui.popup_message = format!(
+                    "Current theme: {} (Press T to cycle themes)",
+                    self.config.theme
+                );
             }
             _ => {}
         }
@@ -323,9 +326,12 @@ impl App {
 
     async fn handle_edit_key(&mut self, key: KeyCode) -> Result<()> {
         use crate::ui::EditMode;
-        
+
         match &mut self.ui.edit_mode {
-            EditMode::Text { current_value, cursor_pos } => {
+            EditMode::Text {
+                current_value,
+                cursor_pos,
+            } => {
                 match key {
                     KeyCode::Enter => {
                         match self.ui.apply_edit_with_hyprctl(&self.hyprctl).await {
@@ -425,7 +431,12 @@ impl App {
                     _ => {}
                 }
             }
-            EditMode::Slider { current_value, min, max, step } => {
+            EditMode::Slider {
+                current_value,
+                min,
+                max,
+                step,
+            } => {
                 match key {
                     KeyCode::Enter => {
                         match self.ui.apply_edit_with_hyprctl(&self.hyprctl).await {
@@ -456,7 +467,13 @@ impl App {
                     _ => {}
                 }
             }
-            EditMode::Keybind { modifiers, key: key_field, dispatcher, args, editing_field } => {
+            EditMode::Keybind {
+                modifiers,
+                key: key_field,
+                dispatcher,
+                args,
+                editing_field,
+            } => {
                 match key {
                     KeyCode::Enter => {
                         match self.ui.apply_edit_with_hyprctl(&self.hyprctl).await {
@@ -497,12 +514,12 @@ impl App {
                                 // Handle modifier addition
                                 let mod_string = match c {
                                     's' => "SUPER",
-                                    'a' => "ALT", 
+                                    'a' => "ALT",
                                     'c' => "CTRL",
                                     'h' => "SHIFT",
                                     _ => return Ok(()),
                                 };
-                                
+
                                 if !modifiers.contains(&mod_string.to_string()) {
                                     modifiers.push(mod_string.to_string());
                                 }
@@ -529,7 +546,12 @@ impl App {
                     _ => {}
                 }
             }
-            EditMode::Rule { rule_type: _, pattern, action, editing_field } => {
+            EditMode::Rule {
+                rule_type: _,
+                pattern,
+                action,
+                editing_field,
+            } => {
                 match key {
                     KeyCode::Enter => {
                         match self.ui.apply_edit_with_hyprctl(&self.hyprctl).await {
@@ -624,7 +646,7 @@ impl App {
     async fn reload_config(&mut self) -> Result<()> {
         // Reload the application's own config
         self.config = Config::load().await?;
-        
+
         // If Hyprland is running, try to reload its configuration first
         if self.hyprctl.is_hyprland_running().await {
             match self.hyprctl.reload_config().await {
@@ -636,38 +658,52 @@ impl App {
                 }
             }
         }
-        
+
         // Reload current configuration into UI (from hyprctl or config file)
         if let Err(e) = self.ui.load_current_config(&self.hyprctl).await {
             eprintln!("Warning: Failed to reload UI configuration: {}", e);
         }
-        
+
         Ok(())
     }
 
     async fn save_config(&mut self) -> Result<()> {
         // TODO: Re-implement validation before saving
-        
+
         // Save the application's own config
         self.config.save().await?;
-        
+
         // Collect all configuration changes from the UI
         let config_changes = self.ui.collect_all_config_changes();
         let keybinds = self.ui.collect_keybinds();
         let window_rules = self.ui.collect_window_rules();
         let layer_rules = self.ui.collect_layer_rules();
-        
+
         // Check if we have any changes to save
-        let has_changes = !config_changes.is_empty() || !keybinds.is_empty() || 
-                         !window_rules.is_empty() || !layer_rules.is_empty();
-        
+        let has_changes = !config_changes.is_empty()
+            || !keybinds.is_empty()
+            || !window_rules.is_empty()
+            || !layer_rules.is_empty();
+
         if has_changes {
             // Save changes to the actual Hyprland config file
-            self.config.save_hyprland_config_with_rules(&config_changes, &keybinds, &window_rules, &layer_rules).await?;
-            
-            eprintln!("Saved {} config options, {} keybinds, {} window rules, {} layer rules", 
-                     config_changes.len(), keybinds.len(), window_rules.len(), layer_rules.len());
-            
+            self.config
+                .save_hyprland_config_with_rules(
+                    &config_changes,
+                    &keybinds,
+                    &window_rules,
+                    &layer_rules,
+                )
+                .await?;
+
+            eprintln!(
+                "Saved {} config options, {} keybinds, {} window rules, {} layer rules",
+                config_changes.len(),
+                keybinds.len(),
+                window_rules.len(),
+                layer_rules.len()
+            );
+
             // If Hyprland is running, try to reload the configuration
             if self.hyprctl.is_hyprland_running().await {
                 match self.hyprctl.reload_config().await {
@@ -685,7 +721,7 @@ impl App {
         } else {
             eprintln!("No configuration changes to save");
         }
-        
+
         Ok(())
     }
 }
