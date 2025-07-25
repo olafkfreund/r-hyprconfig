@@ -1,9 +1,13 @@
-# R-Hyprconfig
+# r-hyprconfig
 
-A modern terminal user interface (TUI) for managing Hyprland window manager configuration, built with Rust and ratatui.
+> 🚀 **A modern TUI for visually configuring Hyprland** 
+
+A production-ready terminal user interface for managing Hyprland window manager configuration with real-time updates, comprehensive validation, and seamless NixOS integration.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)
+![Version](https://img.shields.io/badge/version-v1.0.0-green.svg)
+![Platform](https://img.shields.io/badge/platform-Linux-lightgrey.svg)
 
 ## 🚀 Features
 
@@ -285,19 +289,39 @@ r-hyprconfig
 
 ### Prerequisites
 
-- Hyprland window manager installed and running
+- Hyprland window manager (v0.50.1+ recommended)
 - `hyprctl` command available in PATH
+- Linux x86_64 (ARM64 via source compilation)
 
-### Quick Start (Nix Users)
+### Quick Install (Recommended)
 
+**GitHub Releases:**
 ```bash
-# Run directly without installation
-nix run github:olafkfreund/r-hyprconfig
+# Download latest release
+wget https://github.com/olafkfreund/r-hyprconfig/releases/download/v1.0.0/r-hyprconfig_v1.0.0_amd64.deb
 
-# Or clone and run locally
+# Install (Debian/Ubuntu)
+sudo dpkg -i r-hyprconfig_v1.0.0_amd64.deb
+
+# Install (Fedora/RHEL/CentOS)  
+sudo rpm -i r-hyprconfig-v1.0.0-1.x86_64.rpm
+```
+
+**From Source:**
+```bash
 git clone https://github.com/olafkfreund/r-hyprconfig.git
 cd r-hyprconfig
-nix run .
+cargo build --release
+sudo cp target/release/r-hyprconfig /usr/local/bin/
+```
+
+**With Nix:**
+```bash
+# Run directly
+nix run github:olafkfreund/r-hyprconfig/v1.0.0
+
+# Or install to profile
+nix profile install github:olafkfreund/r-hyprconfig/v1.0.0
 ```
 
 ### NixOS System Configuration
@@ -758,29 +782,33 @@ The Nix flake provides:
 
 ## 📈 Roadmap
 
-### Current Version (v0.1.0)
-- ✅ Complete TUI interface
-- ✅ Real-time configuration editing
+### Current Version (v1.0.0) ✅ STABLE RELEASE
+- ✅ Complete TUI interface with intuitive navigation
+- ✅ Real-time hyprctl integration and configuration editing
+- ✅ Comprehensive configuration validation system
 - ✅ NixOS integration with export functionality
-- ✅ Batch configuration management
-- ✅ Multi-theme support
-- ✅ Search and filtering
+- ✅ Batch configuration management for system admins
+- ✅ Multi-theme support with 6 built-in themes
+- ✅ Search and filtering across all options
+- ✅ Automatic backup and restore functionality
+- ✅ Cross-distribution Linux compatibility
+- ✅ Production-ready stability and error handling
 
-### Upcoming Features (v0.2.0)
-- [ ] Configuration validation with detailed error messages
+### Upcoming Features (v1.1.0)
+- [ ] Undo/redo functionality for configuration changes
+- [ ] Configuration diff viewer and comparison tools
+- [ ] Enhanced batch operations with scheduling
 - [ ] Plugin system for custom configuration modules
-- [ ] Remote configuration management
-- [ ] Configuration synchronization between machines
-- [ ] Visual diff view for configuration changes
-- [ ] Backup and restore with timeline view
+- [ ] Improved validation with contextual error messages
+- [ ] Configuration templates and presets
 
-### Future Plans (v0.3.0+)
+### Future Plans (v1.2.0+)
+- [ ] Remote configuration management via SSH
+- [ ] Configuration synchronization between machines
 - [ ] Integration with popular Hyprland theme repositories
-- [ ] Web interface for remote management
-- [ ] Mobile companion app for quick tweaks
-- [ ] AI-powered configuration optimization
+- [ ] Visual timeline for configuration history
 - [ ] Community configuration sharing platform
-- [ ] Multi-user configuration management
+- [ ] Advanced theming and customization tools
 
 ## 📄 License
 
