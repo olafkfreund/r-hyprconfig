@@ -159,7 +159,7 @@ impl App {
             ui,
             batch_manager,
             last_tick: Instant::now(),
-            tick_rate: Duration::from_millis(250),
+            tick_rate: Duration::from_millis(50), // Faster tick rate for responsive preview
         })
     }
 
