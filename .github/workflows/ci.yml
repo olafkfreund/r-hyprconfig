@@ -23,14 +23,14 @@ jobs:
         github_access_token: ${{ secrets.GITHUB_TOKEN }}
         extra_nix_config: |
           experimental-features = nix-command flakes
-          access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
     
-    - name: Setup Cachix
-      uses: cachix/cachix-action@v12
-      with:
-        name: devenv
-        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
-      continue-on-error: true  # Cachix might not be available
+    # Skip Cachix setup to avoid auth issues
+    # - name: Setup Cachix
+    #   uses: cachix/cachix-action@v12
+    #   with:
+    #     name: devenv
+    #     authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+    #   continue-on-error: true  # Cachix might not be available
     
     - name: Check flake
       run: nix flake check --no-build
@@ -58,7 +58,7 @@ jobs:
         components: rustfmt, clippy
     
     - name: Cache cargo registry
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
@@ -94,7 +94,6 @@ jobs:
     strategy:
       matrix:
         target: 
-          - x86_64-unknown-linux-gnu
           - aarch64-unknown-linux-gnu
     
     steps:
@@ -111,7 +110,7 @@ jobs:
         sudo apt-get install -y pkg-config libssl-dev gcc-aarch64-linux-gnu
     
     - name: Install cross
-      run: cargo install cross --git https://github.com/cross-rs/cross
+      run: cargo install cross
     
     - name: Build for ${{ matrix.target }}
       run: cross build --target=${{ matrix.target }} --release
