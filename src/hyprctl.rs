@@ -194,9 +194,7 @@ impl HyprCtl {
                 }
             }
             Err(e) => {
-                eprintln!(
-                    "Warning: Hyprland is not running or hyprctl is not available: {e}"
-                );
+                eprintln!("Warning: Hyprland is not running or hyprctl is not available: {e}");
                 Ok(()) // Don't fail, just warn - we can use config file fallback
             }
         }

@@ -13,7 +13,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{config::Config, hyprctl::HyprCtl, ui::UI};
+use crate::{batch::BatchManager, config::Config, hyprctl::HyprCtl, ui::UI};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppState {
@@ -86,6 +86,7 @@ pub struct App {
     pub config: Config,
     pub hyprctl: HyprCtl,
     pub ui: UI,
+    pub batch_manager: BatchManager,
     pub last_tick: Instant,
     pub tick_rate: Duration,
 }
@@ -135,6 +136,12 @@ impl App {
             eprintln!("Using default placeholder values.");
         }
 
+        // Initialize batch manager
+        let config_dir = dirs::config_dir()
+            .ok_or_else(|| anyhow::anyhow!("Cannot determine config directory"))?
+            .join("r-hyprconfig");
+        let batch_manager = BatchManager::new(config_dir)?;
+
         Ok(Self {
             state: AppState::Running,
             debug,
@@ -142,6 +149,7 @@ impl App {
             config,
             hyprctl,
             ui,
+            batch_manager,
             last_tick: Instant::now(),
             tick_rate: Duration::from_millis(250),
         })
@@ -200,7 +208,11 @@ impl App {
         if self.ui.show_nixos_export_dialog {
             return self.handle_nixos_export_dialog_key(key).await;
         }
-        
+
+        if self.ui.show_batch_dialog {
+            return self.handle_batch_dialog_key(key).await;
+        }
+
         if self.ui.show_save_dialog {
             return self.handle_save_dialog_key(key).await;
         }
@@ -296,8 +308,12 @@ impl App {
                     self.show_nixos_export_dialog().await;
                 } else {
                     self.ui.show_popup = true;
-                    self.ui.popup_message = "NixOS export is only available on NixOS systems".to_string();
+                    self.ui.popup_message =
+                        "NixOS export is only available on NixOS systems".to_string();
                 }
+            }
+            KeyCode::Char('b') | KeyCode::Char('B') => {
+                self.show_batch_dialog().await;
             }
             _ => {}
         }
@@ -319,7 +335,7 @@ impl App {
         }
         Ok(())
     }
-    
+
     async fn handle_nixos_export_dialog_key(&mut self, key: KeyCode) -> Result<()> {
         match key {
             KeyCode::Char('1') => {
@@ -829,7 +845,8 @@ impl App {
         match self.import_config_from_file().await {
             Ok(imported_count) => {
                 self.ui.show_popup = true;
-                self.ui.popup_message = format!("Imported {imported_count} configuration items successfully!");
+                self.ui.popup_message =
+                    format!("Imported {imported_count} configuration items successfully!");
             }
             Err(e) => {
                 self.ui.show_popup = true;
@@ -839,12 +856,12 @@ impl App {
     }
 
     async fn export_config_to_file(&mut self) -> Result<String> {
-        use std::fs;
         use chrono::Utc;
+        use std::fs;
 
         // Create export directory if it doesn't exist
-        let config_dir = dirs::config_dir()
-            .ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?;
+        let config_dir =
+            dirs::config_dir().ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?;
         let export_dir = config_dir.join("r-hyprconfig").join("exports");
         fs::create_dir_all(&export_dir)?;
 
@@ -861,31 +878,44 @@ impl App {
 
         // Create export data structure
         let export_data = toml::Table::from_iter([
-            ("metadata".to_string(), toml::Value::Table(toml::Table::from_iter([
-                ("export_date".to_string(), toml::Value::String(Utc::now().to_rfc3339())),
-                ("version".to_string(), toml::Value::String("1.0".to_string())),
-                ("theme".to_string(), toml::Value::String(self.config.theme.to_string())),
-            ]))),
-            ("config_options".to_string(), toml::Value::Table(
-                config_changes.into_iter()
-                    .map(|(k, v)| (k, toml::Value::String(v)))
-                    .collect()
-            )),
-            ("keybinds".to_string(), toml::Value::Array(
-                keybinds.into_iter()
-                    .map(toml::Value::String)
-                    .collect()
-            )),
-            ("window_rules".to_string(), toml::Value::Array(
-                window_rules.into_iter()
-                    .map(toml::Value::String)
-                    .collect()
-            )),
-            ("layer_rules".to_string(), toml::Value::Array(
-                layer_rules.into_iter()
-                    .map(toml::Value::String)
-                    .collect()
-            )),
+            (
+                "metadata".to_string(),
+                toml::Value::Table(toml::Table::from_iter([
+                    (
+                        "export_date".to_string(),
+                        toml::Value::String(Utc::now().to_rfc3339()),
+                    ),
+                    (
+                        "version".to_string(),
+                        toml::Value::String("1.0".to_string()),
+                    ),
+                    (
+                        "theme".to_string(),
+                        toml::Value::String(self.config.theme.to_string()),
+                    ),
+                ])),
+            ),
+            (
+                "config_options".to_string(),
+                toml::Value::Table(
+                    config_changes
+                        .into_iter()
+                        .map(|(k, v)| (k, toml::Value::String(v)))
+                        .collect(),
+                ),
+            ),
+            (
+                "keybinds".to_string(),
+                toml::Value::Array(keybinds.into_iter().map(toml::Value::String).collect()),
+            ),
+            (
+                "window_rules".to_string(),
+                toml::Value::Array(window_rules.into_iter().map(toml::Value::String).collect()),
+            ),
+            (
+                "layer_rules".to_string(),
+                toml::Value::Array(layer_rules.into_iter().map(toml::Value::String).collect()),
+            ),
         ]);
 
         // Write to file
@@ -899,19 +929,23 @@ impl App {
         use std::fs;
 
         // Look for the most recent export file
-        let config_dir = dirs::config_dir()
-            .ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?;
+        let config_dir =
+            dirs::config_dir().ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?;
         let export_dir = config_dir.join("r-hyprconfig").join("exports");
 
         if !export_dir.exists() {
-            return Err(anyhow::anyhow!("No export directory found. Please export a configuration first."));
+            return Err(anyhow::anyhow!(
+                "No export directory found. Please export a configuration first."
+            ));
         }
 
         // Find the most recent export file
         let mut export_files: Vec<_> = fs::read_dir(&export_dir)?
             .filter_map(|entry| entry.ok())
             .filter(|entry| {
-                entry.path().extension()
+                entry
+                    .path()
+                    .extension()
                     .and_then(|ext| ext.to_str())
                     .map(|ext| ext == "toml")
                     .unwrap_or(false)
@@ -924,7 +958,8 @@ impl App {
 
         // Sort by modification time (most recent first)
         export_files.sort_by_key(|entry| {
-            entry.metadata()
+            entry
+                .metadata()
                 .and_then(|m| m.modified())
                 .unwrap_or(std::time::UNIX_EPOCH)
         });
@@ -996,27 +1031,27 @@ impl App {
 
         Ok(imported_count)
     }
-    
+
     async fn show_nixos_export_dialog(&mut self) {
         // Initialize the dialog with current config type or default
         if let Some(nixos_config_type) = &self.config.nixos_config_type {
             self.ui.nixos_export_config_type = nixos_config_type.clone();
         }
-        
+
         // Generate preview
         self.update_nixos_export_preview().await;
-        
+
         self.ui.show_nixos_export_dialog = true;
     }
-    
+
     async fn update_nixos_export_preview(&mut self) {
         use crate::nixos::ConfigConverter;
-        
+
         let config_changes = self.ui.collect_all_config_changes();
         let keybinds = self.ui.collect_keybinds();
         let window_rules = self.ui.collect_window_rules();
         let layer_rules = self.ui.collect_layer_rules();
-        
+
         let converter = ConfigConverter::new();
         match converter.traditional_to_nixos(
             &config_changes,
@@ -1028,8 +1063,11 @@ impl App {
             Ok(config) => {
                 // Truncate preview if too long
                 let preview = if config.len() > 2000 {
-                    format!("{}...\n\n[Output truncated - {} more characters]", 
-                           &config[..2000], config.len() - 2000)
+                    format!(
+                        "{}...\n\n[Output truncated - {} more characters]",
+                        &config[..2000],
+                        config.len() - 2000
+                    )
                 } else {
                     config
                 };
@@ -1053,32 +1091,32 @@ impl App {
             }
         }
     }
-    
+
     async fn export_nixos_config_to_file(&mut self) -> Result<String> {
         use crate::nixos::ConfigConverter;
-        use std::fs;
         use chrono::Utc;
-        
+        use std::fs;
+
         // Create export directory if it doesn't exist
-        let config_dir = dirs::config_dir()
-            .ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?;
+        let config_dir =
+            dirs::config_dir().ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?;
         let export_dir = config_dir.join("r-hyprconfig").join("nixos-exports");
         fs::create_dir_all(&export_dir)?;
-        
+
         // Generate timestamp for unique filename
         let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
         let filename = format!("hyprland_nixos_export_{timestamp}.nix");
         let export_path = export_dir.join(&filename);
-        
+
         // Collect all configuration data
         let config_changes = self.ui.collect_all_config_changes();
         let keybinds = self.ui.collect_keybinds();
         let window_rules = self.ui.collect_window_rules();
         let layer_rules = self.ui.collect_layer_rules();
-        
+
         // Use the selected config type from the dialog
         let target_type = self.ui.nixos_export_config_type.clone();
-        
+
         // Convert to NixOS format
         let converter = ConfigConverter::new();
         let nixos_config = converter.traditional_to_nixos(
@@ -1088,10 +1126,185 @@ impl App {
             &layer_rules,
             target_type,
         )?;
-        
+
         // Write to file
         fs::write(&export_path, nixos_config)?;
-        
+
         Ok(export_path.to_string_lossy().to_string())
+    }
+
+    // Batch configuration management methods
+    async fn show_batch_dialog(&mut self) {
+        // Initialize with default state
+        self.ui.batch_dialog_mode = crate::ui::BatchDialogMode::ManageProfiles;
+        self.ui.batch_selected_profile = None;
+        self.ui.batch_operation_type = crate::batch::BatchOperationType::Apply;
+        self.ui.show_batch_dialog = true;
+    }
+
+    async fn handle_batch_dialog_key(&mut self, key: KeyCode) -> Result<()> {
+        match self.ui.batch_dialog_mode {
+            crate::ui::BatchDialogMode::ManageProfiles => {
+                self.handle_batch_manage_profiles_key(key).await
+            }
+            crate::ui::BatchDialogMode::SelectOperation => {
+                self.handle_batch_select_operation_key(key).await
+            }
+            crate::ui::BatchDialogMode::ExecuteOperation => {
+                self.handle_batch_execute_operation_key(key).await
+            }
+        }
+    }
+
+    async fn handle_batch_manage_profiles_key(&mut self, key: KeyCode) -> Result<()> {
+        match key {
+            KeyCode::Char('1') => {
+                // Create new profile
+                self.create_batch_profile().await;
+            }
+            KeyCode::Char('2') => {
+                // Select existing profile
+                self.ui.batch_dialog_mode = crate::ui::BatchDialogMode::SelectOperation;
+            }
+            KeyCode::Char('3') => {
+                // Delete profile
+                self.delete_batch_profile().await;
+            }
+            KeyCode::Esc => {
+                self.ui.show_batch_dialog = false;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    async fn handle_batch_select_operation_key(&mut self, key: KeyCode) -> Result<()> {
+        match key {
+            KeyCode::Char('1') => {
+                self.ui.batch_operation_type = crate::batch::BatchOperationType::Apply;
+                self.ui.batch_dialog_mode = crate::ui::BatchDialogMode::ExecuteOperation;
+            }
+            KeyCode::Char('2') => {
+                self.ui.batch_operation_type = crate::batch::BatchOperationType::Merge;
+                self.ui.batch_dialog_mode = crate::ui::BatchDialogMode::ExecuteOperation;
+            }
+            KeyCode::Char('3') => {
+                self.ui.batch_operation_type = crate::batch::BatchOperationType::Replace;
+                self.ui.batch_dialog_mode = crate::ui::BatchDialogMode::ExecuteOperation;
+            }
+            KeyCode::Char('4') => {
+                self.ui.batch_operation_type = crate::batch::BatchOperationType::Backup;
+                self.ui.batch_dialog_mode = crate::ui::BatchDialogMode::ExecuteOperation;
+            }
+            KeyCode::Esc => {
+                self.ui.batch_dialog_mode = crate::ui::BatchDialogMode::ManageProfiles;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    async fn handle_batch_execute_operation_key(&mut self, key: KeyCode) -> Result<()> {
+        match key {
+            KeyCode::Enter => {
+                // Execute the batch operation
+                self.execute_batch_operation().await;
+            }
+            KeyCode::Esc => {
+                self.ui.batch_dialog_mode = crate::ui::BatchDialogMode::SelectOperation;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    async fn create_batch_profile(&mut self) {
+        // Create profile with timestamp
+        let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+        let profile_name = format!("profile_{timestamp}");
+
+        // For now, create an empty profile with no config paths
+        // TODO: In the future, implement actual config file path collection
+        let config_paths = Vec::new();
+
+        match self.batch_manager.create_profile(
+            profile_name.clone(),
+            Some("Auto-generated profile".to_string()),
+            config_paths,
+        ) {
+            Ok(_) => {
+                self.ui.show_popup = true;
+                self.ui.popup_message = format!("Profile '{profile_name}' created successfully!");
+                self.ui.show_batch_dialog = false;
+            }
+            Err(e) => {
+                self.ui.show_popup = true;
+                self.ui.popup_message = format!("Failed to create profile: {e}");
+            }
+        }
+    }
+
+    async fn delete_batch_profile(&mut self) {
+        if let Some(profile_name) = &self.ui.batch_selected_profile {
+            match self.batch_manager.delete_profile(profile_name) {
+                Ok(_) => {
+                    self.ui.show_popup = true;
+                    self.ui.popup_message =
+                        format!("Profile '{profile_name}' deleted successfully!");
+                    self.ui.batch_selected_profile = None;
+                    self.ui.show_batch_dialog = false;
+                }
+                Err(e) => {
+                    self.ui.show_popup = true;
+                    self.ui.popup_message = format!("Failed to delete profile: {e}");
+                }
+            }
+        } else {
+            self.ui.show_popup = true;
+            self.ui.popup_message = "No profile selected for deletion".to_string();
+        }
+    }
+
+    async fn execute_batch_operation(&mut self) {
+        if let Some(profile_name) = &self.ui.batch_selected_profile {
+            // Collect current configuration for the operation
+            let config_changes = self.ui.collect_all_config_changes();
+            let keybinds = self.ui.collect_keybinds();
+            let window_rules = self.ui.collect_window_rules();
+            let layer_rules = self.ui.collect_layer_rules();
+
+            let operation = crate::batch::BatchOperation {
+                operation_type: self.ui.batch_operation_type.clone(),
+                settings: config_changes,
+                keybinds,
+                window_rules,
+                layer_rules,
+                target_profiles: vec![profile_name.clone()],
+            };
+
+            match self
+                .batch_manager
+                .execute_batch_operation(&operation, &self.hyprctl)
+                .await
+            {
+                Ok(results) => {
+                    let success_count = results.iter().filter(|r| r.success).count();
+                    self.ui.show_popup = true;
+                    self.ui.popup_message = format!(
+                        "Batch operation '{:?}' completed! {success_count}/{} profiles succeeded.",
+                        self.ui.batch_operation_type,
+                        results.len()
+                    );
+                    self.ui.show_batch_dialog = false;
+                }
+                Err(e) => {
+                    self.ui.show_popup = true;
+                    self.ui.popup_message = format!("Batch operation failed: {e}");
+                }
+            }
+        } else {
+            self.ui.show_popup = true;
+            self.ui.popup_message = "No profile selected for operation".to_string();
+        }
     }
 }

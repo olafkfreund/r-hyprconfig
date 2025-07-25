@@ -68,6 +68,13 @@ pub enum RuleField {
     Action,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum BatchDialogMode {
+    ManageProfiles,
+    SelectOperation,
+    ExecuteOperation,
+}
+
 #[derive(Debug, Clone)]
 pub struct ConfigItem {
     pub key: String,
@@ -113,21 +120,21 @@ pub struct UI {
     pub search_mode: bool,
     pub search_query: String,
     pub search_cursor: usize,
-    
+
     // Help system
     pub show_help: bool,
     pub help_scroll: usize,
-    
+
     // Debounced search
     pub search_debounce_delay: std::time::Duration,
     pub last_search_input: std::time::Instant,
     pub pending_search_query: String,
     pub debounced_search_active: bool,
-    
+
     // Search result caching
     pub search_cache: std::collections::HashMap<String, Vec<ConfigItem>>,
     pub search_cache_max_size: usize,
-    
+
     // Progressive search for large datasets
     pub progressive_search_threshold: usize,
     pub progressive_search_chunk_size: usize,
@@ -145,14 +152,20 @@ pub struct UI {
     pub item_cache_generation: usize, // Cache invalidation counter
 
     pub config_items: std::collections::HashMap<FocusedPanel, Vec<ConfigItem>>,
-    
+
     // NixOS environment information
     pub nixos_env: NixOSEnvironment,
-    
+
     // NixOS export dialog state
     pub show_nixos_export_dialog: bool,
     pub nixos_export_config_type: crate::nixos::NixConfigType,
     pub nixos_export_preview: Option<String>,
+
+    // Batch management dialog state
+    pub show_batch_dialog: bool,
+    pub batch_dialog_mode: BatchDialogMode,
+    pub batch_selected_profile: Option<String>,
+    pub batch_operation_type: crate::batch::BatchOperationType,
 }
 
 impl UI {
@@ -181,21 +194,21 @@ impl UI {
             search_mode: false,
             search_query: String::new(),
             search_cursor: 0,
-            
+
             // Help system
             show_help: false,
             help_scroll: 0,
-            
+
             // Debounced search
             search_debounce_delay: std::time::Duration::from_millis(300), // 300ms debounce
             last_search_input: std::time::Instant::now(),
             pending_search_query: String::new(),
             debounced_search_active: false,
-            
+
             // Search result caching
             search_cache: std::collections::HashMap::new(),
             search_cache_max_size: 50, // Cache up to 50 recent searches
-            
+
             // Progressive search
             progressive_search_threshold: 1000, // Use progressive search for 1000+ items
             progressive_search_chunk_size: 100, // Process 100 items per chunk
@@ -213,14 +226,20 @@ impl UI {
             item_cache_generation: 0,
 
             config_items: std::collections::HashMap::new(),
-            
+
             // NixOS environment detection
             nixos_env: NixOSEnvironment::detect(),
-            
+
             // NixOS export dialog
             show_nixos_export_dialog: false,
             nixos_export_config_type: crate::nixos::NixConfigType::HomeManager,
             nixos_export_preview: None,
+
+            // Batch management dialog
+            show_batch_dialog: false,
+            batch_dialog_mode: BatchDialogMode::ManageProfiles,
+            batch_selected_profile: None,
+            batch_operation_type: crate::batch::BatchOperationType::Apply,
         };
 
         // Initialize with first item selected for each panel
@@ -710,12 +729,24 @@ impl UI {
 
         // Insert configuration items only if they don't already exist
         // This prevents overwriting dynamically loaded data from hyprctl
-        self.config_items.entry(FocusedPanel::Animations).or_insert(animations_items);
-        self.config_items.entry(FocusedPanel::Gestures).or_insert(gestures_items);
-        self.config_items.entry(FocusedPanel::Binds).or_insert(binds_items);
-        self.config_items.entry(FocusedPanel::WindowRules).or_insert(window_rules_items);
-        self.config_items.entry(FocusedPanel::LayerRules).or_insert(layer_rules_items);
-        self.config_items.entry(FocusedPanel::Misc).or_insert(misc_items);
+        self.config_items
+            .entry(FocusedPanel::Animations)
+            .or_insert(animations_items);
+        self.config_items
+            .entry(FocusedPanel::Gestures)
+            .or_insert(gestures_items);
+        self.config_items
+            .entry(FocusedPanel::Binds)
+            .or_insert(binds_items);
+        self.config_items
+            .entry(FocusedPanel::WindowRules)
+            .or_insert(window_rules_items);
+        self.config_items
+            .entry(FocusedPanel::LayerRules)
+            .or_insert(layer_rules_items);
+        self.config_items
+            .entry(FocusedPanel::Misc)
+            .or_insert(misc_items);
     }
 
     pub fn collect_all_config_changes(&self) -> std::collections::HashMap<String, String> {
@@ -824,9 +855,7 @@ impl UI {
                 String::new()
             };
 
-            Some(format!(
-                "bind = {mod_part}{key}, {dispatcher}{args_part}"
-            ))
+            Some(format!("bind = {mod_part}{key}, {dispatcher}{args_part}"))
         } else {
             None
         }
@@ -1008,29 +1037,31 @@ impl UI {
 
     fn add_fallback_placeholder_data(&mut self) {
         // Add placeholder keybinds if not already present
-        self.config_items.entry(FocusedPanel::Binds).or_insert_with(|| {
-            let placeholder_binds = vec![
-                ConfigItem {
-                    key: "bind_example_1".to_string(),
-                    value: "SUPER + Q → exec [kitty]".to_string(),
-                    description: "Example: Open terminal with Super+Q".to_string(),
-                    data_type: ConfigDataType::String,
-                    suggestions: vec![
-                        "exec".to_string(),
-                        "killactive".to_string(),
-                        "togglefloating".to_string(),
-                    ],
-                },
-                ConfigItem {
-                    key: "hyprland_not_running".to_string(),
-                    value: "⚠️  Configuration not available".to_string(),
-                    description: "Could not load from hyprctl or config file".to_string(),
-                    data_type: ConfigDataType::String,
-                    suggestions: vec![],
-                },
-            ];
-            placeholder_binds
-        });
+        self.config_items
+            .entry(FocusedPanel::Binds)
+            .or_insert_with(|| {
+                let placeholder_binds = vec![
+                    ConfigItem {
+                        key: "bind_example_1".to_string(),
+                        value: "SUPER + Q → exec [kitty]".to_string(),
+                        description: "Example: Open terminal with Super+Q".to_string(),
+                        data_type: ConfigDataType::String,
+                        suggestions: vec![
+                            "exec".to_string(),
+                            "killactive".to_string(),
+                            "togglefloating".to_string(),
+                        ],
+                    },
+                    ConfigItem {
+                        key: "hyprland_not_running".to_string(),
+                        value: "⚠️  Configuration not available".to_string(),
+                        description: "Could not load from hyprctl or config file".to_string(),
+                        data_type: ConfigDataType::String,
+                        suggestions: vec![],
+                    },
+                ];
+                placeholder_binds
+            });
 
         // Add placeholder window rules if not already present
         if !self.config_items.contains_key(&FocusedPanel::WindowRules) {
@@ -1885,9 +1916,13 @@ impl UI {
         if self.show_reload_dialog {
             self.render_reload_dialog(f, size);
         }
-        
+
         if self.show_nixos_export_dialog {
             self.render_nixos_export_dialog(f, size);
+        }
+
+        if self.show_batch_dialog {
+            self.render_batch_dialog(f, size);
         }
 
         if self.edit_mode != EditMode::None {
@@ -1915,7 +1950,7 @@ impl UI {
                 Style::default().fg(self.theme.accent_secondary).bold(),
             ),
         ];
-        
+
         // Add NixOS indicator if detected
         if self.nixos_env.is_nixos {
             title_spans.push(Span::raw(" | "));
@@ -1923,7 +1958,7 @@ impl UI {
                 "NixOS",
                 Style::default().fg(self.theme.accent_info).bold(),
             ));
-            
+
             if let Some(config_loc) = self.nixos_env.get_primary_config_location() {
                 title_spans.push(Span::raw(" ("));
                 let config_type_str = config_loc.config_type.to_string();
@@ -1970,7 +2005,8 @@ impl UI {
     }
 
     fn render_tab_bar(&self, f: &mut Frame, area: Rect) {
-        let tabs = [FocusedPanel::General,
+        let tabs = [
+            FocusedPanel::General,
             FocusedPanel::Input,
             FocusedPanel::Decoration,
             FocusedPanel::Animations,
@@ -1978,7 +2014,8 @@ impl UI {
             FocusedPanel::Binds,
             FocusedPanel::WindowRules,
             FocusedPanel::LayerRules,
-            FocusedPanel::Misc];
+            FocusedPanel::Misc,
+        ];
 
         let tab_spans: Vec<Span> = tabs
             .iter()
@@ -2057,10 +2094,10 @@ impl UI {
             .cloned()
             .unwrap_or_default();
         let filtered_items = self.filter_items_progressive(&config_items);
-        
+
         // Update pagination for current filtered items
         self.update_pagination(self.current_tab, filtered_items.len());
-        
+
         // Apply pagination to the filtered items for performance
         let paginated_items = self.get_paginated_items(&filtered_items);
 
@@ -2070,14 +2107,14 @@ impl UI {
         } else {
             area.height
         };
-        let (virtualized_items, _start_idx, _end_idx) = 
+        let (virtualized_items, _start_idx, _end_idx) =
             self.get_virtualized_items(&paginated_items, content_area_height as usize);
 
         // Extract theme before creating items to avoid borrowing conflicts
         let theme = self.theme.clone();
         let current_tab = self.current_tab;
-        
-        // Create optimized list items (only for visible items)  
+
+        // Create optimized list items (only for visible items)
         let items = Self::create_optimized_list_items(&virtualized_items, &theme);
 
         // Panel title
@@ -2392,16 +2429,16 @@ impl UI {
         f.render_widget(Clear, popup_area);
         f.render_widget(popup, popup_area);
     }
-    
+
     fn render_nixos_export_dialog(&self, f: &mut Frame, area: Rect) {
         let popup_area = Self::centered_rect(90, 80, area);
-        
+
         // Split the dialog into two sections: options and preview
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
             .split(popup_area);
-        
+
         // Left side: Configuration type options
         let current_type = &self.nixos_export_config_type;
         let options_content = vec![
@@ -2419,7 +2456,7 @@ impl UI {
                     Span::styled("(selected)", Style::default().fg(Color::Green))
                 } else {
                     Span::raw("")
-                }
+                },
             ]),
             Line::from("    User-level configuration"),
             Line::from(""),
@@ -2430,7 +2467,7 @@ impl UI {
                     Span::styled("(selected)", Style::default().fg(Color::Green))
                 } else {
                     Span::raw("")
-                }
+                },
             ]),
             Line::from("    System-level Hyprland enabling"),
             Line::from(""),
@@ -2441,7 +2478,7 @@ impl UI {
                     Span::styled("(selected)", Style::default().fg(Color::Green))
                 } else {
                     Span::raw("")
-                }
+                },
             ]),
             Line::from("    Flake-based Home Manager"),
             Line::from(""),
@@ -2452,7 +2489,7 @@ impl UI {
                     Span::styled("(selected)", Style::default().fg(Color::Green))
                 } else {
                     Span::raw("")
-                }
+                },
             ]),
             Line::from("    System-level flake"),
             Line::from(""),
@@ -2464,7 +2501,7 @@ impl UI {
                 Span::styled(" - Cancel", Style::default().fg(Color::Gray)),
             ]),
         ];
-        
+
         let options_popup = Paragraph::new(options_content)
             .alignment(Alignment::Left)
             .block(
@@ -2476,14 +2513,14 @@ impl UI {
                     .title_style(Style::default().fg(Color::Cyan).bold()),
             )
             .wrap(Wrap { trim: true });
-        
+
         // Right side: Preview
         let preview_content = if let Some(preview) = &self.nixos_export_preview {
             preview.clone()
         } else {
             "Generating preview...".to_string()
         };
-        
+
         let preview_popup = Paragraph::new(preview_content)
             .alignment(Alignment::Left)
             .block(
@@ -2495,7 +2532,7 @@ impl UI {
                     .title_style(Style::default().fg(Color::Yellow).bold()),
             )
             .wrap(Wrap { trim: true });
-        
+
         // Render both sides
         f.render_widget(Clear, popup_area);
         f.render_widget(options_popup, chunks[0]);
@@ -2993,15 +3030,19 @@ impl UI {
     }
 
     pub fn scroll_up(&mut self) {
-        let all_items = self.config_items.get(&self.current_tab).cloned().unwrap_or_default();
+        let all_items = self
+            .config_items
+            .get(&self.current_tab)
+            .cloned()
+            .unwrap_or_default();
         if all_items.is_empty() {
             return;
         }
-        
+
         // Get the current visible items (filtered and paginated)
         let filtered_items = self.filter_items_progressive(&all_items);
         let paginated_items = self.get_paginated_items(&filtered_items);
-        
+
         if paginated_items.is_empty() {
             return;
         }
@@ -3017,15 +3058,19 @@ impl UI {
     }
 
     pub fn scroll_down(&mut self) {
-        let all_items = self.config_items.get(&self.current_tab).cloned().unwrap_or_default();
+        let all_items = self
+            .config_items
+            .get(&self.current_tab)
+            .cloned()
+            .unwrap_or_default();
         if all_items.is_empty() {
             return;
         }
-        
+
         // Get the current visible items (filtered and paginated)
         let filtered_items = self.filter_items_progressive(&all_items);
         let paginated_items = self.get_paginated_items(&filtered_items);
-        
+
         if paginated_items.is_empty() {
             return;
         }
@@ -3456,7 +3501,7 @@ impl UI {
             // Update the pending search query immediately for visual feedback
             self.pending_search_query.insert(self.search_cursor, c);
             self.search_cursor += 1;
-            
+
             // Update debounce timing
             self.last_search_input = std::time::Instant::now();
             self.debounced_search_active = true;
@@ -3467,7 +3512,7 @@ impl UI {
         if self.search_mode && self.search_cursor > 0 {
             self.search_cursor -= 1;
             self.pending_search_query.remove(self.search_cursor);
-            
+
             // Update debounce timing
             self.last_search_input = std::time::Instant::now();
             self.debounced_search_active = true;
@@ -3485,10 +3530,10 @@ impl UI {
             let query_changed = self.search_query != self.pending_search_query;
             self.search_query = self.pending_search_query.clone();
             self.debounced_search_active = false;
-            
+
             return query_changed;
         }
-        
+
         false
     }
 
@@ -3521,7 +3566,7 @@ impl UI {
         }
 
         let query = self.search_query.to_lowercase();
-        
+
         // Check cache first
         let cache_key = format!("{}:{}", self.current_tab as u8, query);
         if let Some(cached_results) = self.search_cache.get(&cache_key) {
@@ -3541,7 +3586,7 @@ impl UI {
 
         // Cache the results
         self.cache_search_results(cache_key, filtered_items.clone());
-        
+
         filtered_items
     }
 
@@ -3553,7 +3598,7 @@ impl UI {
                 self.search_cache.remove(&key_to_remove);
             }
         }
-        
+
         self.search_cache.insert(cache_key, results);
     }
 
@@ -3564,12 +3609,13 @@ impl UI {
     #[allow(dead_code)]
     pub fn invalidate_search_cache_for_panel(&mut self, panel: FocusedPanel) {
         let panel_prefix = format!("{}:", panel as u8);
-        let keys_to_remove: Vec<String> = self.search_cache
+        let keys_to_remove: Vec<String> = self
+            .search_cache
             .keys()
             .filter(|key| key.starts_with(&panel_prefix))
             .cloned()
             .collect();
-        
+
         for key in keys_to_remove {
             self.search_cache.remove(&key);
         }
@@ -3582,7 +3628,7 @@ impl UI {
         }
 
         let query = self.search_query.to_lowercase();
-        
+
         // Check cache first
         let cache_key = format!("{}:{}", self.current_tab as u8, query);
         if let Some(cached_results) = self.search_cache.get(&cache_key) {
@@ -3592,7 +3638,7 @@ impl UI {
         // Use progressive search for large datasets
         if items.len() > self.progressive_search_threshold {
             let mut filtered_items = Vec::new();
-            
+
             // Process items in chunks to maintain responsiveness
             for chunk in items.chunks(self.progressive_search_chunk_size) {
                 let chunk_results: Vec<ConfigItem> = chunk
@@ -3604,17 +3650,17 @@ impl UI {
                     })
                     .cloned()
                     .collect();
-                
+
                 filtered_items.extend(chunk_results);
-                
+
                 // Yield control periodically for UI responsiveness
                 // Note: In a real implementation, you might want to add actual yielding
                 // or async processing here for extremely large datasets
             }
-            
+
             // Cache the results
             self.cache_search_results(cache_key, filtered_items.clone());
-            
+
             filtered_items
         } else {
             // Use standard filtering for smaller datasets
@@ -3624,14 +3670,18 @@ impl UI {
 
     // Lazy loading / pagination methods
     pub fn get_paginated_items(&self, items: &[ConfigItem]) -> Vec<ConfigItem> {
-        let current_page = self.current_page.get(&self.current_tab).copied().unwrap_or(0);
+        let current_page = self
+            .current_page
+            .get(&self.current_tab)
+            .copied()
+            .unwrap_or(0);
         let start_idx = current_page * self.page_size;
         let end_idx = (start_idx + self.page_size).min(items.len());
-        
+
         if start_idx >= items.len() {
             return Vec::new();
         }
-        
+
         items[start_idx..end_idx].to_vec()
     }
 
@@ -3641,20 +3691,29 @@ impl UI {
         } else {
             total_items.div_ceil(self.page_size)
         };
-        
+
         self.total_pages.insert(panel, total_pages);
-        
+
         // Ensure current page is within bounds
         let current_page = self.current_page.get(&panel).copied().unwrap_or(0);
         if current_page >= total_pages {
-            self.current_page.insert(panel, total_pages.saturating_sub(1));
+            self.current_page
+                .insert(panel, total_pages.saturating_sub(1));
         }
     }
 
     pub fn next_page(&mut self) {
-        let current_page = self.current_page.get(&self.current_tab).copied().unwrap_or(0);
-        let total_pages = self.total_pages.get(&self.current_tab).copied().unwrap_or(1);
-        
+        let current_page = self
+            .current_page
+            .get(&self.current_tab)
+            .copied()
+            .unwrap_or(0);
+        let total_pages = self
+            .total_pages
+            .get(&self.current_tab)
+            .copied()
+            .unwrap_or(1);
+
         if current_page + 1 < total_pages {
             self.current_page.insert(self.current_tab, current_page + 1);
             // Reset list selection to top of new page
@@ -3663,8 +3722,12 @@ impl UI {
     }
 
     pub fn prev_page(&mut self) {
-        let current_page = self.current_page.get(&self.current_tab).copied().unwrap_or(0);
-        
+        let current_page = self
+            .current_page
+            .get(&self.current_tab)
+            .copied()
+            .unwrap_or(0);
+
         if current_page > 0 {
             self.current_page.insert(self.current_tab, current_page - 1);
             // Reset list selection to top of new page
@@ -3673,8 +3736,16 @@ impl UI {
     }
 
     pub fn get_pagination_info(&self) -> (usize, usize, usize) {
-        let current_page = self.current_page.get(&self.current_tab).copied().unwrap_or(0);
-        let total_pages = self.total_pages.get(&self.current_tab).copied().unwrap_or(1);
+        let current_page = self
+            .current_page
+            .get(&self.current_tab)
+            .copied()
+            .unwrap_or(0);
+        let total_pages = self
+            .total_pages
+            .get(&self.current_tab)
+            .copied()
+            .unwrap_or(1);
         let start_item = current_page * self.page_size + 1;
         (current_page + 1, total_pages, start_item)
     }
@@ -3694,7 +3765,8 @@ impl UI {
         ];
 
         for panel in panels {
-            let item_count = self.config_items
+            let item_count = self
+                .config_items
                 .get(&panel)
                 .map(|items| items.len())
                 .unwrap_or(0);
@@ -3703,7 +3775,11 @@ impl UI {
     }
 
     // Virtualization methods
-    pub fn get_visible_item_range(&self, available_height: usize, total_items: usize) -> (usize, usize) {
+    pub fn get_visible_item_range(
+        &self,
+        available_height: usize,
+        total_items: usize,
+    ) -> (usize, usize) {
         if total_items == 0 || available_height == 0 {
             return (0, 0);
         }
@@ -3713,7 +3789,8 @@ impl UI {
         let max_visible_items = max_visible_items.max(1); // Ensure at least 1 item is visible
 
         // Get the currently selected item to determine scroll position
-        let selected_index = self.get_list_state(self.current_tab)
+        let selected_index = self
+            .get_list_state(self.current_tab)
             .selected()
             .unwrap_or(0);
 
@@ -3727,32 +3804,39 @@ impl UI {
         };
 
         let end_index = (start_index + max_visible_items).min(total_items);
-        
+
         (start_index, end_index)
     }
 
-    pub fn get_virtualized_items(&self, items: &[ConfigItem], available_height: usize) -> (Vec<ConfigItem>, usize, usize) {
+    pub fn get_virtualized_items(
+        &self,
+        items: &[ConfigItem],
+        available_height: usize,
+    ) -> (Vec<ConfigItem>, usize, usize) {
         // Disable virtualization for small item counts where it's not needed
         // This fixes the issue where users can't see all items in categories with reasonable counts
         if items.len() <= 100 {
             return (items.to_vec(), 0, items.len());
         }
-        
+
         let (start_idx, end_idx) = self.get_visible_item_range(available_height, items.len());
-        
+
         if start_idx >= items.len() {
             return (Vec::new(), 0, 0);
         }
-        
+
         let visible_items = items[start_idx..end_idx].to_vec();
         (visible_items, start_idx, end_idx)
     }
 
     // Efficient ListItem creation with optimization
-    pub fn create_optimized_list_items(items: &[ConfigItem], theme: &crate::theme::Theme) -> Vec<ListItem<'static>> {
+    pub fn create_optimized_list_items(
+        items: &[ConfigItem],
+        theme: &crate::theme::Theme,
+    ) -> Vec<ListItem<'static>> {
         // Pre-allocate the vector with known capacity for better performance
         let mut list_items = Vec::with_capacity(items.len());
-        
+
         for item in items {
             // Create optimized ListItem with minimal string allocations
             let value_style = theme.data_type_style(&item.data_type);
@@ -3787,7 +3871,7 @@ impl UI {
 
             list_items.push(ListItem::new(vec![line, description_line]));
         }
-        
+
         // Explicitly shrink the vector if it has excess capacity
         list_items.shrink_to_fit();
         list_items
@@ -3799,19 +3883,23 @@ impl UI {
         for (_, items) in self.config_items.iter_mut() {
             items.shrink_to_fit();
         }
-        
+
         // Clear search cache to free memory and ensure fresh results
         self.clear_search_cache();
-        
+
         // Increment cache generation to invalidate old cached data
         self.item_cache_generation = self.item_cache_generation.wrapping_add(1);
     }
 
     // Batch processing for very large datasets
     #[allow(dead_code)]
-    pub fn process_items_in_batches<F>(&self, items: &[ConfigItem], batch_size: usize, mut processor: F) 
-    where 
-        F: FnMut(&[ConfigItem])
+    pub fn process_items_in_batches<F>(
+        &self,
+        items: &[ConfigItem],
+        batch_size: usize,
+        mut processor: F,
+    ) where
+        F: FnMut(&[ConfigItem]),
     {
         for chunk in items.chunks(batch_size) {
             processor(chunk);
@@ -3935,23 +4023,26 @@ impl UI {
         let help_area = Self::centered_rect(90, 85, area);
 
         let help_content = vec![
-            Line::from(vec![
-                Span::styled("📖 R-Hyprconfig Help System", Style::default().fg(self.theme.accent_primary).bold())
-            ]),
+            Line::from(vec![Span::styled(
+                "📖 R-Hyprconfig Help System",
+                Style::default().fg(self.theme.accent_primary).bold(),
+            )]),
             Line::from(""),
-            Line::from(vec![
-                Span::styled("🔍 Navigation & Search", Style::default().fg(self.theme.accent_secondary).bold())
-            ]),
+            Line::from(vec![Span::styled(
+                "🔍 Navigation & Search",
+                Style::default().fg(self.theme.accent_secondary).bold(),
+            )]),
             Line::from("  Tab/→              Next panel"),
-            Line::from("  Shift+Tab/←        Previous panel"), 
+            Line::from("  Shift+Tab/←        Previous panel"),
             Line::from("  ↑↓                 Navigate items"),
             Line::from("  PgUp/PgDn           Change page"),
             Line::from("  /                  Start search"),
             Line::from("  Esc                Exit search/dialogs"),
             Line::from(""),
-            Line::from(vec![
-                Span::styled("⚙️ Configuration", Style::default().fg(self.theme.accent_secondary).bold())
-            ]),
+            Line::from(vec![Span::styled(
+                "⚙️ Configuration",
+                Style::default().fg(self.theme.accent_secondary).bold(),
+            )]),
             Line::from("  Enter              Edit selected item"),
             Line::from("  S                  Save configuration"),
             Line::from("  R                  Reload configuration"),
@@ -3964,18 +4055,21 @@ impl UI {
             } else {
                 "  N                  Export as NixOS (requires NixOS)"
             }),
+            Line::from("  B                  Batch configuration management"),
             Line::from(""),
-            Line::from(vec![
-                Span::styled("🎨 Interface", Style::default().fg(self.theme.accent_secondary).bold())
-            ]),
+            Line::from(vec![Span::styled(
+                "🎨 Interface",
+                Style::default().fg(self.theme.accent_secondary).bold(),
+            )]),
             Line::from("  T                  Switch theme"),
             Line::from("  F1                 Theme information"),
             Line::from("  ?/F1               Show this help"),
             Line::from("  E                  Show error details"),
             Line::from(""),
-            Line::from(vec![
-                Span::styled("📂 Configuration Panels", Style::default().fg(self.theme.accent_secondary).bold())
-            ]),
+            Line::from(vec![Span::styled(
+                "📂 Configuration Panels",
+                Style::default().fg(self.theme.accent_secondary).bold(),
+            )]),
             Line::from("  General            Basic Hyprland settings"),
             Line::from("  Input              Keyboard & mouse configuration"),
             Line::from("  Decoration         Window borders & appearance"),
@@ -3986,9 +4080,10 @@ impl UI {
             Line::from("  Layer Rules        Layer-specific settings"),
             Line::from("  Misc               Miscellaneous options"),
             Line::from(""),
-            Line::from(vec![
-                Span::styled("🔧 Advanced Features", Style::default().fg(self.theme.accent_secondary).bold())
-            ]),
+            Line::from(vec![Span::styled(
+                "🔧 Advanced Features",
+                Style::default().fg(self.theme.accent_secondary).bold(),
+            )]),
             Line::from("  • Automatic backup of configurations"),
             Line::from("  • Real-time validation with error detection"),
             Line::from("  • Search across all configuration options"),
@@ -3996,23 +4091,28 @@ impl UI {
             Line::from("  • Theme persistence across sessions"),
             Line::from("  • High-performance handling of 500+ items"),
             Line::from(""),
-            Line::from(vec![
-                Span::styled("📋 Tips", Style::default().fg(self.theme.accent_secondary).bold())
-            ]),
+            Line::from(vec![Span::styled(
+                "📋 Tips",
+                Style::default().fg(self.theme.accent_secondary).bold(),
+            )]),
             Line::from("  • Use search (/) to quickly find settings"),
             Line::from("  • Page navigation handles large configs smoothly"),
             Line::from("  • Validation prevents invalid configurations"),
             Line::from("  • All changes are backed up automatically"),
             Line::from("  • Theme changes are saved immediately"),
             Line::from(""),
-            Line::from(vec![
-                Span::styled("🚀 NixOS Integration", Style::default().fg(self.theme.accent_info).bold())
-            ]),
+            Line::from(vec![Span::styled(
+                "🚀 NixOS Integration",
+                Style::default().fg(self.theme.accent_info).bold(),
+            )]),
             Line::from(if self.nixos_env.is_nixos {
-                format!("  Status: NixOS detected ({})", 
-                    self.nixos_env.get_primary_config_location()
+                format!(
+                    "  Status: NixOS detected ({})",
+                    self.nixos_env
+                        .get_primary_config_location()
                         .map(|loc| loc.config_type.to_string())
-                        .unwrap_or_else(|| "Unknown".to_string()))
+                        .unwrap_or_else(|| "Unknown".to_string())
+                )
             } else {
                 "  Status: Traditional Linux system".to_string()
             }),
@@ -4027,41 +4127,57 @@ impl UI {
                 "  • Ready for NixOS if you switch systems"
             }),
             Line::from(""),
-            Line::from(vec![
-                Span::styled("⚠️ File Locations", Style::default().fg(self.theme.warning_style().fg.unwrap()).bold())
-            ]),
-            Line::from(if self.nixos_env.is_nixos && self.nixos_env.get_primary_config_location().is_some() {
-                format!("  NixOS Config: {}", 
-                    self.nixos_env.get_primary_config_location()
-                        .map(|loc| loc.path.to_string_lossy().to_string())
-                        .unwrap_or_else(|| "Not found".to_string()))
-            } else {
-                "  Config: ~/.config/hypr/hyprland.conf".to_string()
-            }),
+            Line::from(vec![Span::styled(
+                "⚠️ File Locations",
+                Style::default()
+                    .fg(self.theme.warning_style().fg.unwrap())
+                    .bold(),
+            )]),
+            Line::from(
+                if self.nixos_env.is_nixos && self.nixos_env.get_primary_config_location().is_some()
+                {
+                    format!(
+                        "  NixOS Config: {}",
+                        self.nixos_env
+                            .get_primary_config_location()
+                            .map(|loc| loc.path.to_string_lossy().to_string())
+                            .unwrap_or_else(|| "Not found".to_string())
+                    )
+                } else {
+                    "  Config: ~/.config/hypr/hyprland.conf".to_string()
+                },
+            ),
             Line::from("  Backup: ~/.config/hypr/hyprland.conf.backup"),
             Line::from("  App config: ~/.config/r-hyprconfig/"),
             Line::from(""),
-            Line::from(vec![
-                Span::styled("Press Esc or ? to close help", Style::default().fg(self.theme.fg_muted).italic())
-            ]),
+            Line::from(vec![Span::styled(
+                "Press Esc or ? to close help",
+                Style::default().fg(self.theme.fg_muted).italic(),
+            )]),
         ];
 
         // Calculate visible content based on scroll
         let content_height = help_area.height.saturating_sub(4) as usize; // Account for borders and padding
         let max_scroll = help_content.len().saturating_sub(content_height);
         let scroll = self.help_scroll.min(max_scroll);
-        
+
         let total_lines = help_content.len();
         let visible_content: Vec<Line> = if total_lines > content_height {
-            help_content.into_iter().skip(scroll).take(content_height).collect()
+            help_content
+                .into_iter()
+                .skip(scroll)
+                .take(content_height)
+                .collect()
         } else {
             help_content
         };
 
         let help_title = if max_scroll > 0 {
-            format!(" Help - {} of {} lines (↑↓ to scroll) ", 
-                   scroll + content_height.min(total_lines), 
-                   total_lines)
+            format!(
+                " Help - {} of {} lines (↑↓ to scroll) ",
+                scroll + content_height.min(total_lines),
+                total_lines
+            )
         } else {
             " Help ".to_string()
         };
@@ -4074,14 +4190,17 @@ impl UI {
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(self.theme.accent_primary))
                     .border_type(BorderType::Rounded)
-                    .style(Style::default().bg(self.theme.bg_primary))
+                    .style(Style::default().bg(self.theme.bg_primary)),
             )
             .alignment(Alignment::Left)
             .wrap(ratatui::widgets::Wrap { trim: true });
 
         // Clear the background
-        f.render_widget(Block::default().style(Style::default().bg(Color::Black)), area);
-        
+        f.render_widget(
+            Block::default().style(Style::default().bg(Color::Black)),
+            area,
+        );
+
         // Render the help overlay
         f.render_widget(help_paragraph, help_area);
     }
@@ -4097,7 +4216,7 @@ impl UI {
                 }
             }
         }
-        
+
         // If not found in existing items, try to determine the panel and add it
         let panel = self.determine_panel_for_key(key);
         let new_item = ConfigItem {
@@ -4107,53 +4226,80 @@ impl UI {
             description: format!("Imported setting: {key}"),
             suggestions: Vec::new(),
         };
-        
+
         self.config_items.entry(panel).or_default().push(new_item);
     }
 
     pub fn add_imported_keybind(&mut self, keybind: &str) {
         let new_item = ConfigItem {
-            key: format!("imported_bind_{}", self.config_items.get(&FocusedPanel::Binds).map(|v| v.len()).unwrap_or(0)),
+            key: format!(
+                "imported_bind_{}",
+                self.config_items
+                    .get(&FocusedPanel::Binds)
+                    .map(|v| v.len())
+                    .unwrap_or(0)
+            ),
             value: keybind.to_string(),
             data_type: ConfigDataType::String,
             description: "Imported keybind".to_string(),
             suggestions: Vec::new(),
         };
-        
-        self.config_items.entry(FocusedPanel::Binds).or_default().push(new_item);
+
+        self.config_items
+            .entry(FocusedPanel::Binds)
+            .or_default()
+            .push(new_item);
     }
 
     pub fn add_imported_window_rule(&mut self, rule: &str) {
         let new_item = ConfigItem {
-            key: format!("imported_windowrule_{}", self.config_items.get(&FocusedPanel::WindowRules).map(|v| v.len()).unwrap_or(0)),
+            key: format!(
+                "imported_windowrule_{}",
+                self.config_items
+                    .get(&FocusedPanel::WindowRules)
+                    .map(|v| v.len())
+                    .unwrap_or(0)
+            ),
             value: rule.to_string(),
             data_type: ConfigDataType::String,
             description: "Imported window rule".to_string(),
             suggestions: Vec::new(),
         };
-        
-        self.config_items.entry(FocusedPanel::WindowRules).or_default().push(new_item);
+
+        self.config_items
+            .entry(FocusedPanel::WindowRules)
+            .or_default()
+            .push(new_item);
     }
 
     pub fn add_imported_layer_rule(&mut self, rule: &str) {
         let new_item = ConfigItem {
-            key: format!("imported_layerrule_{}", self.config_items.get(&FocusedPanel::LayerRules).map(|v| v.len()).unwrap_or(0)),
+            key: format!(
+                "imported_layerrule_{}",
+                self.config_items
+                    .get(&FocusedPanel::LayerRules)
+                    .map(|v| v.len())
+                    .unwrap_or(0)
+            ),
             value: rule.to_string(),
             data_type: ConfigDataType::String,
             description: "Imported layer rule".to_string(),
             suggestions: Vec::new(),
         };
-        
-        self.config_items.entry(FocusedPanel::LayerRules).or_default().push(new_item);
+
+        self.config_items
+            .entry(FocusedPanel::LayerRules)
+            .or_default()
+            .push(new_item);
     }
 
     pub fn refresh_all_panels(&mut self) {
         // Update pagination for all panels
         self.update_all_pagination();
-        
+
         // Clear search cache
         self.clear_search_cache();
-        
+
         // Reset selections to top of each panel
         for panel in [
             FocusedPanel::General,
@@ -4175,7 +4321,10 @@ impl UI {
             FocusedPanel::General
         } else if key.starts_with("input") || key.contains("kb_") || key.contains("mouse") {
             FocusedPanel::Input
-        } else if key.starts_with("decoration") || key.contains("rounding") || key.contains("shadow") {
+        } else if key.starts_with("decoration")
+            || key.contains("rounding")
+            || key.contains("shadow")
+        {
             FocusedPanel::Decoration
         } else if key.starts_with("animations") || key.contains("animation") {
             FocusedPanel::Animations
@@ -4192,5 +4341,199 @@ impl UI {
         } else {
             FocusedPanel::Misc // Default fallback
         }
+    }
+
+    fn render_batch_dialog(&self, f: &mut Frame, area: Rect) {
+        let popup_area = Self::centered_rect(80, 70, area);
+
+        match self.batch_dialog_mode {
+            BatchDialogMode::ManageProfiles => {
+                self.render_batch_manage_profiles(f, popup_area);
+            }
+            BatchDialogMode::SelectOperation => {
+                self.render_batch_select_operation(f, popup_area);
+            }
+            BatchDialogMode::ExecuteOperation => {
+                self.render_batch_execute_operation(f, popup_area);
+            }
+        }
+    }
+
+    fn render_batch_manage_profiles(&self, f: &mut Frame, area: Rect) {
+        f.render_widget(Clear, area);
+
+        let popup_content = vec![
+            Line::from(vec![Span::styled(
+                "🔧 Batch Configuration Management",
+                Style::default().fg(Color::Cyan).bold(),
+            )]),
+            Line::from(""),
+            Line::from("Manage configuration profiles:"),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("1. ", Style::default().fg(Color::Yellow).bold()),
+                Span::raw("Create new profile from current config"),
+            ]),
+            Line::from(vec![
+                Span::styled("2. ", Style::default().fg(Color::Yellow).bold()),
+                Span::raw("Select existing profile for operations"),
+            ]),
+            Line::from(vec![
+                Span::styled("3. ", Style::default().fg(Color::Yellow).bold()),
+                Span::raw("Delete profile"),
+            ]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled(
+                    "Current profiles: ",
+                    Style::default().fg(Color::Green).bold(),
+                ),
+                Span::raw("(implementation pending)"),
+            ]),
+            Line::from(""),
+            Line::from("Press Esc to cancel"),
+        ];
+
+        let popup = Paragraph::new(popup_content)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().fg(Color::Cyan))
+                    .title(" Batch Management ")
+                    .title_alignment(Alignment::Center),
+            )
+            .wrap(Wrap { trim: true })
+            .alignment(Alignment::Left);
+
+        f.render_widget(popup, area);
+    }
+
+    fn render_batch_select_operation(&self, f: &mut Frame, area: Rect) {
+        f.render_widget(Clear, area);
+
+        let selected_profile = self.batch_selected_profile.as_deref().unwrap_or("None");
+
+        let popup_content = vec![
+            Line::from(vec![Span::styled(
+                "🚀 Select Batch Operation",
+                Style::default().fg(Color::Cyan).bold(),
+            )]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled(
+                    "Selected Profile: ",
+                    Style::default().fg(Color::Green).bold(),
+                ),
+                Span::raw(selected_profile),
+            ]),
+            Line::from(""),
+            Line::from("Choose operation type:"),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("1. ", Style::default().fg(Color::Yellow).bold()),
+                Span::raw("Apply - Apply profile settings to current config"),
+            ]),
+            Line::from(vec![
+                Span::styled("2. ", Style::default().fg(Color::Yellow).bold()),
+                Span::raw("Merge - Merge profile with current settings"),
+            ]),
+            Line::from(vec![
+                Span::styled("3. ", Style::default().fg(Color::Yellow).bold()),
+                Span::raw("Replace - Replace current config with profile"),
+            ]),
+            Line::from(vec![
+                Span::styled("4. ", Style::default().fg(Color::Yellow).bold()),
+                Span::raw("Backup - Create backup before applying"),
+            ]),
+            Line::from(""),
+            Line::from("Press Esc to go back"),
+        ];
+
+        let popup = Paragraph::new(popup_content)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().fg(Color::Cyan))
+                    .title(" Operation Selection ")
+                    .title_alignment(Alignment::Center),
+            )
+            .wrap(Wrap { trim: true })
+            .alignment(Alignment::Left);
+
+        f.render_widget(popup, area);
+    }
+
+    fn render_batch_execute_operation(&self, f: &mut Frame, area: Rect) {
+        f.render_widget(Clear, area);
+
+        let selected_profile = self.batch_selected_profile.as_deref().unwrap_or("None");
+
+        let operation_name = match self.batch_operation_type {
+            crate::batch::BatchOperationType::Apply => "Apply",
+            crate::batch::BatchOperationType::Merge => "Merge",
+            crate::batch::BatchOperationType::Replace => "Replace",
+            crate::batch::BatchOperationType::Backup => "Backup",
+        };
+
+        let popup_content = vec![
+            Line::from(vec![Span::styled(
+                "⚡ Execute Batch Operation",
+                Style::default().fg(Color::Cyan).bold(),
+            )]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("Profile: ", Style::default().fg(Color::Green).bold()),
+                Span::raw(selected_profile),
+            ]),
+            Line::from(vec![
+                Span::styled("Operation: ", Style::default().fg(Color::Yellow).bold()),
+                Span::raw(operation_name),
+            ]),
+            Line::from(""),
+            Line::from("This will:"),
+            Line::from(match self.batch_operation_type {
+                crate::batch::BatchOperationType::Apply => {
+                    "• Apply profile settings to your current Hyprland configuration"
+                }
+                crate::batch::BatchOperationType::Merge => {
+                    "• Merge profile settings with your current configuration"
+                }
+                crate::batch::BatchOperationType::Replace => {
+                    "• Replace your current configuration with the profile"
+                }
+                crate::batch::BatchOperationType::Backup => {
+                    "• Create a backup of your current configuration"
+                }
+            }),
+            Line::from("• Update the configuration file and reload Hyprland"),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("⚠️  Warning: ", Style::default().fg(Color::Red).bold()),
+                Span::raw("This will modify your Hyprland configuration!"),
+            ]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("Press Enter", Style::default().fg(Color::Green).bold()),
+                Span::raw(" to execute or "),
+                Span::styled("Esc", Style::default().fg(Color::Red).bold()),
+                Span::raw(" to cancel"),
+            ]),
+        ];
+
+        let popup = Paragraph::new(popup_content)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().fg(Color::Cyan))
+                    .title(" Confirm Operation ")
+                    .title_alignment(Alignment::Center),
+            )
+            .wrap(Wrap { trim: true })
+            .alignment(Alignment::Left);
+
+        f.render_widget(popup, area);
     }
 }

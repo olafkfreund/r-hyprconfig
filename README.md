@@ -5,45 +5,303 @@ A modern terminal user interface (TUI) for managing Hyprland window manager conf
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)
 
-## Features
+## 🚀 Features
 
-- 🎨 **Modern TUI Interface** - Clean, intuitive terminal interface built with ratatui
-- ⚡ **Real-time Configuration** - Live configuration changes via hyprctl commands
-- 📦 **Organized Panels** - Configuration options organized in easy-to-navigate boxes
-- 💾 **Auto-save Support** - Automatic config file management for standard Linux
-- 🏗️ **NixOS Compatible** - Special handling for NixOS declarative configurations
-- ⌨️ **Keyboard Navigation** - Full keyboard control with intuitive shortcuts
+### 🎨 **Modern TUI Interface**
+- Clean, intuitive terminal interface built with ratatui
+- Responsive layout that adapts to terminal size
+- Color-coded panels with focus indicators
+- Scrollable lists with visual scrollbars
 
-## Installation
+### ⚡ **Real-time Configuration**
+- Live configuration changes via hyprctl commands
+- Instant preview of changes
+- No restart required for most settings
+
+### 📦 **Organized Configuration Management**
+- Configuration options organized in easy-to-navigate panels
+- Logical grouping: General, Input, Decoration, Animations, Gestures, Binds, Rules
+- Smart search and filtering across all options
+
+### 🏗️ **NixOS Integration** *(NEW)*
+- Automatic NixOS environment detection
+- Export configurations in NixOS-compatible format
+- Support for multiple NixOS configuration types:
+  - Home Manager standalone
+  - System-level configuration
+  - Flake-based Home Manager
+  - Flake-based NixOS system
+
+### 🔧 **Batch Configuration Management** *(NEW)*
+- Create and manage multiple configuration profiles
+- Apply settings across multiple machines
+- Batch operations: Apply, Merge, Replace, Backup
+- Perfect for system administrators
+
+### 💾 **Advanced Configuration Handling**
+- Automatic config file management
+- Smart backup creation before modifications
+- Import/Export functionality with TOML format
+- Configuration validation and error checking
+
+### ⌨️ **Keyboard Navigation**
+- Full keyboard control with intuitive shortcuts
+- Vim-like navigation patterns
+- Context-sensitive help system
+
+## 🎯 Real-Life Use Cases
+
+### 1. **Daily Hyprland User**
+*Sarah is a developer who wants to fine-tune her Hyprland setup*
+
+```bash
+# Quick configuration tweaks
+r-hyprconfig
+
+# Navigate to General panel
+# Adjust gaps_in from 5 to 8 pixels
+# Press Enter to edit, type new value
+# Press S to save configuration
+# Changes applied instantly!
+```
+
+**Sarah's Workflow:**
+- Opens r-hyprconfig when she wants to adjust window gaps
+- Uses the search function (/) to quickly find specific settings
+- Tests different animation curves in real-time
+- Saves configurations with meaningful names for different workflows
+
+### 2. **System Administrator**
+*Mike manages 20+ developer workstations with Hyprland*
+
+```bash
+# Create standardized profiles
+r-hyprconfig
+
+# Press B for Batch Management
+# 1. Create new profile "developer-workstation"
+# Configure standard settings:
+#   - gaps_in = 5
+#   - gaps_out = 10
+#   - rounding = 8
+#   - Standard keybindings
+
+# Deploy to multiple machines:
+# 2. Select existing profile
+# 3. Choose "Apply" operation
+# Execute across all target machines
+```
+
+**Mike's Workflow:**
+- Creates company-standard configuration profiles
+- Uses batch operations to deploy consistent settings
+- Maintains backup profiles for quick rollbacks
+- Manages different profiles for different teams (frontend, backend, QA)
+
+### 3. **NixOS User**
+*Alex uses NixOS with declarative configuration management*
+
+```bash
+# Configure Hyprland graphically, export to Nix
+r-hyprconfig
+
+# Make visual changes in TUI
+# Press N for NixOS Export
+# Choose configuration type:
+#   1. Home Manager standalone
+#   2. System configuration  
+#   3. Flake-based Home Manager ← Alex chooses this
+#   4. Flake-based NixOS system
+
+# Preview generated Nix configuration
+# Press Enter to export
+```
+
+**Generated Nix Configuration:**
+```nix
+{
+  description = "Home Manager flake with Hyprland configuration";
+  
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    home-manager = {
+      url = "github:nix-community/home-manager";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    hyprland.url = "github:hyprwm/Hyprland";
+  };
+  
+  outputs = { nixpkgs, home-manager, hyprland, ... }: {
+    homeConfigurations."${USER}" = home-manager.lib.homeManagerConfiguration {
+      pkgs = nixpkgs.legacyPackages.x86_64-linux;
+      modules = [
+        hyprland.homeManagerModules.default
+        {
+          wayland.windowManager.hyprland = {
+            enable = true;
+            settings = {
+              general = {
+                gaps_in = 5;
+                gaps_out = 10;
+                border_size = 2;
+              };
+              decoration = {
+                rounding = 8;
+                blur = {
+                  enabled = true;
+                  size = 6;
+                };
+              };
+              bind = [
+                "SUPER, Q, exec, kitty"
+                "SUPER, W, killactive"
+                "SUPER, M, exit"
+              ];
+              windowrule = [
+                "float, ^(kitty)$"
+                "opacity 0.8 0.8, ^(Alacritty)$"
+              ];
+            };
+          };
+        }
+      ];
+    };
+  };
+}
+```
+
+### 4. **Gaming Enthusiast**
+*Jordan wants different configurations for work and gaming*
+
+```bash
+# Create work profile
+r-hyprconfig
+# Press B → 1 (Create profile)
+# Configure: minimal gaps, no animations, productivity keybinds
+
+# Create gaming profile  
+# Press B → 1 (Create profile)
+# Configure: flashy animations, gaming-optimized keybinds
+
+# Quick switching between profiles
+# Press B → 2 → 1 (Apply work profile)
+# Press B → 2 → 1 (Apply gaming profile)
+```
+
+**Jordan's Profiles:**
+- **Work Profile**: Minimal distractions, productivity-focused keybinds
+- **Gaming Profile**: Eye-candy animations, gaming-specific window rules
+- **Streaming Profile**: Optimized for screen sharing and OBS
+
+## 📱 Application Screenshots
+
+### Main Interface
+```
+┌─ r-hyprconfig v0.1.0 ─ NixOS Detected ─ Theme: Nord ────────────────────────────┐
+│ ⚙️  Hyprland Configuration Manager                                               │
+│ 🏠 Config: ~/.config/hypr/hyprland.conf                                        │
+│ 📦 NixOS: Home Manager + Flakes                                                │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ Configuration Panels ──────────────────────────────────────────────────────────┐
+│ [General] [Input] [Decoration] [Animations] [Gestures] [Binds] [Rules] [Misc]   │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌─ General Configuration ──────────────────────────────────────────────┐
+│ ✓ gaps_in                              5           │ Inner window gaps │
+│   gaps_out                            10           │ Outer window gaps │
+│   border_size                          2           │ Window border size│
+│   col.active_border                 0xff5e81ac     │ Active border     │
+│   col.inactive_border               0xff3b4252     │ Inactive border   │
+│   cursor_inactive_timeout             0           │ Hide cursor delay │
+│   layout                             dwindle      │ Default layout    │
+│   no_cursor_warps                     false       │ Disable warping   │
+│   resize_on_border                    false       │ Resize on border  │
+│   extend_border_grab_area              5          │ Border grab area  │
+└──────────────────────────────────────────────────────────────────────┘
+
+┌─ Help ─────────────────────────────────────────────────────────────────────────┐
+│ Navigation: ↑/↓ Select  Tab/Shift+Tab Switch Panel  Enter Edit  Esc Cancel     │
+│ Actions: S Save  R Reload  N NixOS Export  B Batch  E Export  M Import         │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+### NixOS Export Dialog
+```
+┌─ Export as NixOS Configuration ──────────────────────────────────────────────────┐
+│                                                                                  │
+│ Choose NixOS configuration type:                                                 │
+│                                                                                  │
+│ 1. Home Manager (standalone)       - ~/.config/nixpkgs/home.nix                │
+│ 2. System Configuration           - /etc/nixos/configuration.nix                │
+│ 3. Flake Home Manager     ← [*]   - flake.nix with Home Manager               │
+│ 4. Flake NixOS System             - flake.nix with NixOS                       │
+│                                                                                  │
+│ ┌─ Preview ────────────────────────────────────────────────────────────────────┐ │
+│ │ {                                                                           │ │
+│ │   wayland.windowManager.hyprland = {                                       │ │
+│ │     enable = true;                                                          │ │
+│ │     settings = {                                                            │ │
+│ │       general = {                                                           │ │
+│ │         gaps_in = 5;                                                        │ │
+│ │         gaps_out = 10;                                                      │ │
+│ │         border_size = 2;                                                    │ │
+│ │       };                                                                    │ │
+│ │       bind = [                                                              │ │
+│ │         "SUPER, Q, exec, kitty"                                            │ │
+│ │         "SUPER, W, killactive"                                             │ │
+│ │       ];                                                                    │ │
+│ │     };                                                                      │ │
+│ │   };                                                                        │ │
+│ │ }                                                                           │ │
+│ └─────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                  │
+│ Press Enter to export • Esc to cancel                                          │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Batch Management Dialog
+```
+┌─ Batch Configuration Management ─────────────────────────────────────────────────┐
+│                                                                                  │
+│ 🔧 Batch Configuration Management                                                │
+│                                                                                  │
+│ Manage configuration profiles:                                                   │
+│                                                                                  │
+│ 1. Create new profile from current config                                       │
+│ 2. Select existing profile for operations                                       │
+│ 3. Delete profile                                                               │
+│                                                                                  │
+│ Current profiles:                                                                │
+│ • developer-workstation-v1 (created: 2025-01-15)                              │
+│ • gaming-setup (created: 2025-01-14)                                           │
+│ • minimal-productivity (created: 2025-01-10)                                   │
+│                                                                                  │
+│ Press Esc to cancel                                                             │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+## 🛠️ Installation
 
 ### Prerequisites
 
 - Hyprland window manager installed and running
 - `hyprctl` command available in PATH
 
-### With Nix (Recommended)
+### Quick Start (Nix Users)
 
-#### Direct run (no installation)
 ```bash
-# Run the latest version directly
+# Run directly without installation
 nix run github:olafkfreund/r-hyprconfig
 
-# Run from local clone
+# Or clone and run locally
 git clone https://github.com/olafkfreund/r-hyprconfig.git
 cd r-hyprconfig
 nix run .
 ```
 
-#### Install to profile
-```bash
-# Install globally
-nix profile install github:olafkfreund/r-hyprconfig
+### NixOS System Configuration
 
-# Install from local clone
-nix profile install .
-```
-
-#### NixOS Configuration
 Add to your NixOS configuration:
 
 ```nix
@@ -56,7 +314,8 @@ Add to your NixOS configuration:
 }
 ```
 
-#### Home Manager Configuration
+### Home Manager Configuration
+
 Add to your Home Manager configuration:
 
 ```nix
@@ -76,267 +335,470 @@ Add to your Home Manager configuration:
 }
 ```
 
-### From Source (Traditional)
-
-#### Prerequisites
-- Rust 1.70 or higher
-- pkg-config and OpenSSL development libraries
+### From Source (Traditional Linux)
 
 ```bash
+# Prerequisites: Rust 1.70+, pkg-config, OpenSSL dev libraries
 git clone https://github.com/olafkfreund/r-hyprconfig.git
 cd r-hyprconfig
 cargo build --release
+
+# Binary available at target/release/r-hyprconfig
+./target/release/r-hyprconfig
 ```
 
-The binary will be available at `target/release/r-hyprconfig`.
-
-## Usage
-
-### Basic Usage
+### Package Managers
 
 ```bash
-# Run the TUI
-./r-hyprconfig
+# AUR (Arch Linux)
+yay -S r-hyprconfig-git
 
-# Enable debug mode
-./r-hyprconfig --debug
+# Cargo (Rust package manager)
+cargo install r-hyprconfig
+
+# Homebrew (macOS/Linux)
+brew install olafkfreund/tap/r-hyprconfig
 ```
 
-### Navigation
+## 📋 Usage Guide
 
-- **Tab** / **→** : Navigate to next panel
-- **Shift+Tab** / **←** : Navigate to previous panel
-- **↑** / **↓** : Navigate within panel
-- **Enter** : Select/edit configuration option
-- **R** : Reload configuration from Hyprland
-- **S** : Save configuration to file
-- **Q** / **Esc** : Quit application
+### Basic Navigation
 
-## Configuration Panels
+| Key | Action |
+|-----|--------|
+| `Tab` / `→` | Navigate to next panel |
+| `Shift+Tab` / `←` | Navigate to previous panel |
+| `↑` / `↓` | Navigate within panel |
+| `Page Up` / `Page Down` | Scroll by page |
+| `Home` / `End` | Go to first/last item |
 
-The TUI organizes Hyprland configuration into the following panels:
+### Configuration Management
 
-### Core Configuration
-- **General** - Basic window and border settings
-- **Input** - Keyboard and mouse configuration
-- **Decoration** - Visual effects, blur, shadows, rounding
+| Key | Action |
+|-----|--------|
+| `Enter` | Edit selected configuration option |
+| `S` | Save configuration to file |
+| `R` | Reload configuration from Hyprland |
+| `E` | Export configuration (TOML) |
+| `M` | Import configuration |
 
-### Advanced Features  
-- **Animations** - Animation settings and bezier curves
-- **Gestures** - Touchpad and gesture configuration
-- **Binds** - Keybindings and shortcuts
+### Advanced Features
 
-### Rules & Misc
-- **Window Rules** - Application-specific window behavior
-- **Layer Rules** - Layer-specific rendering rules  
-- **Misc** - Additional Hyprland options
+| Key | Action |
+|-----|--------|
+| `N` | Export as NixOS configuration |
+| `B` | Batch configuration management |
+| `T` | Cycle through themes |
+| `/` | Search configuration options |
+| `?` / `F1` | Show help overlay |
+| `Q` / `Esc` | Quit application |
 
-## Architecture
+### Search and Filtering
 
-### Core Components
+Press `/` to enter search mode:
 
-- **App** (`src/app.rs`) - Main application state and event handling
-- **UI** (`src/ui.rs`) - TUI rendering and layout management
-- **HyprCtl** (`src/hyprctl.rs`) - Integration with Hyprland via hyprctl commands
-- **Config** (`src/config.rs`) - Configuration file management and persistence
+```bash
+# Search examples:
+/gaps          # Find all gap-related settings
+/border        # Find border configuration
+/animation     # Find animation settings
+/bind          # Find keybinding options
+```
 
-### Key Features
+### Configuration Editing
 
-#### Real-time Configuration
-The application uses `hyprctl` commands to:
-- Read current Hyprland configuration values
-- Apply changes immediately to the running compositor
-- Reload configuration when needed
+When you press `Enter` on a setting:
 
-#### File Management
-- **Standard Linux**: Direct modification of `hyprland.conf`
-- **NixOS**: Generates NixOS-compatible configuration files
-- **Backup**: Automatic backup creation before modifications
+1. **Text Values**: Direct text input with cursor
+2. **Boolean Values**: Toggle with Space
+3. **Numeric Values**: Type new number
+4. **Select Options**: Use ↑/↓ to choose from predefined options
+5. **Keybinds**: Special editor for modifier+key combinations
 
-#### Modern TUI
-- Built with ratatui for cross-platform terminal rendering
-- Responsive layout that adapts to terminal size
-- Color-coded panels with focus indicators
-- Scrollable lists with visual scrollbars
+## 🏗️ Configuration Panels
 
-## Configuration
+### 1. General Panel
+Core window management settings:
+- Window gaps (inner/outer)
+- Border configuration (size, colors)
+- Layout options (dwindle, master)
+- Cursor behavior
 
-### Application Config
+### 2. Input Panel  
+Keyboard and mouse configuration:
+- Keyboard layout and options
+- Mouse sensitivity and acceleration  
+- Touchpad settings
+- Special key behaviors
 
-R-Hyprconfig stores its settings in `~/.config/r-hyprconfig/config.toml`:
+### 3. Decoration Panel
+Visual appearance settings:
+- Window rounding
+- Blur effects and intensity
+- Drop shadows
+- Opacity settings
+
+### 4. Animations Panel
+Animation configuration:
+- Animation curves (bezier definitions)
+- Animation speeds
+- Window transition effects
+- Workspace animations
+
+### 5. Gestures Panel
+Touchpad gesture configuration:
+- Workspace switching gestures
+- Window management gestures
+- Custom gesture commands
+
+### 6. Binds Panel
+Keybinding management:
+- Application launchers
+- Window management shortcuts
+- Workspace navigation
+- Custom commands
+
+### 7. Window Rules Panel
+Application-specific window behavior:
+- Floating rules for specific applications
+- Size and position rules
+- Opacity and effects rules
+- Workspace assignment rules
+
+### 8. Layer Rules Panel
+Layer-specific rendering rules:
+- Overlay effects for bars/panels
+- Blur rules for specific layers
+- Z-order management
+
+### 9. Misc Panel
+Additional Hyprland options:
+- Hyprland logo display
+- Debug settings
+- Experimental features
+
+## 🔧 Advanced Features
+
+### NixOS Integration
+
+The application automatically detects NixOS environments and provides seamless integration:
+
+#### Detection Methods
+- Checks for `/etc/NIXOS` file
+- Detects `NIX_STORE` environment variable
+- Verifies `nixos-rebuild` command availability
+- Scans for Nix store directory (`/nix/store`)
+
+#### Supported Configuration Types
+
+1. **Home Manager Standalone**
+   ```nix
+   # ~/.config/nixpkgs/home.nix
+   { config, pkgs, ... }: {
+     wayland.windowManager.hyprland = {
+       enable = true;
+       settings = {
+         # Your settings here
+       };
+     };
+   }
+   ```
+
+2. **System Configuration**
+   ```nix
+   # /etc/nixos/configuration.nix
+   { config, pkgs, ... }: {
+     programs.hyprland = {
+       enable = true;
+       # User configuration in Home Manager
+     };
+   }
+   ```
+
+3. **Flake-based Home Manager**
+   ```nix
+   {
+     description = "Home Manager flake with Hyprland";
+     inputs = {
+       hyprland.url = "github:hyprwm/Hyprland";
+       # ... other inputs
+     };
+     outputs = { ... }: {
+       homeConfigurations."user" = # ... configuration
+     };
+   }
+   ```
+
+4. **Flake-based NixOS System**
+   ```nix
+   {
+     description = "NixOS flake with Hyprland";
+     inputs = {
+       hyprland.url = "github:hyprwm/Hyprland";
+     };
+     outputs = { ... }: {
+       nixosConfigurations.hostname = # ... configuration
+     };
+   }
+   ```
+
+### Batch Configuration Management
+
+Perfect for system administrators managing multiple Hyprland installations:
+
+#### Profile Management
+- **Create Profiles**: Capture current configuration as reusable profiles
+- **Profile Metadata**: Automatic timestamping and descriptions
+- **Profile Storage**: Organized storage in `~/.config/r-hyprconfig/profiles/`
+
+#### Batch Operations
+
+1. **Apply**: Apply profile settings to current configuration
+2. **Merge**: Intelligently merge profile with existing settings
+3. **Replace**: Replace entire configuration with profile
+4. **Backup**: Create backup before applying changes
+
+#### Real-World Batch Scenarios
+
+**Scenario 1: New Employee Onboarding**
+```bash
+# System admin creates standard developer profile
+r-hyprconfig
+# Configure optimal developer settings
+# Press B → 1 to create "new-developer-2025" profile
+
+# Deploy to new employee machines
+# Press B → 2 → Select "new-developer-2025"
+# Press 1 for Apply operation
+# Consistent setup across all machines!
+```
+
+**Scenario 2: Seasonal Configuration Updates**
+```bash
+# Create "summer-theme" profile with bright colors
+# Create "winter-theme" profile with dark colors
+# Use batch operations to deploy seasonally
+```
+
+**Scenario 3: Team-Specific Configurations**
+```bash
+# Frontend team: Focus on visual tools
+# Backend team: Terminal-heavy workflows  
+# QA team: Multi-monitor optimized
+# Each team gets optimized profile
+```
+
+## 📂 Configuration Files
+
+### Application Configuration
+Location: `~/.config/r-hyprconfig/config.toml`
 
 ```toml
 hyprland_config_path = "/home/user/.config/hypr/hyprland.conf"
 backup_enabled = true
 auto_save = false
 nixos_mode = false
+theme = "Nord"
+
+[nixos]
+config_type = "HomeManager"
+export_path = "/home/user/.config/nixos-exports/"
+
+[batch]
+profile_directory = "/home/user/.config/r-hyprconfig/profiles/"
+auto_backup = true
 ```
 
-### NixOS Integration
+### Profile Storage
+Location: `~/.config/r-hyprconfig/profiles/`
 
-When running on NixOS, the application automatically detects the environment and:
-- Generates NixOS-compatible configuration syntax
-- Saves to a separate file for manual integration
-- Provides instructions for incorporating changes
+```
+profiles/
+├── developer-workstation-v1.toml
+├── gaming-setup.toml
+├── minimal-productivity.toml
+└── metadata.json
+```
 
-## Development
+### Export Directory
+Location: `~/.config/r-hyprconfig/exports/`
 
-### Quick Start with Nix + devenv
+```
+exports/
+├── hyprland_export_20250115_143022.toml
+├── nixos-exports/
+│   ├── hyprland_nixos_export_20250115_143045.nix
+│   └── hyprland_nixos_export_20250114_091234.nix
+└── backups/
+    └── hyprland_backup_20250115_143022.conf
+```
 
-The easiest way to get started with development:
+## 🎨 Themes
+
+Built-in themes for different preferences:
+
+### Available Themes
+- **Nord**: Cool blue/gray palette (default)
+- **Dracula**: Dark purple vampire theme
+- **Gruvbox**: Warm retro colors
+- **Tokyo Night**: Modern dark theme
+- **Catppuccin**: Pastel dark theme
+- **Solarized**: Classic light/dark scientific theme
+
+### Theme Switching
+Press `T` to cycle through themes, or configure in `config.toml`:
+
+```toml
+theme = "Nord"  # Nord, Dracula, Gruvbox, TokyoNight, Catppuccin, Solarized
+```
+
+## 🔍 Troubleshooting
+
+### Common Issues
+
+#### "hyprctl not found"
+**Problem**: Hyprland is not installed or not in PATH
+**Solution**: 
+```bash
+# Verify Hyprland installation
+which hyprctl
+# Should return path like /usr/bin/hyprctl
+
+# If not found, install Hyprland first
+```
+
+#### "Permission denied writing config"
+**Problem**: Cannot write to Hyprland config file
+**Solution**:
+```bash
+# Check file permissions
+ls -la ~/.config/hypr/hyprland.conf
+
+# Fix permissions if needed
+chmod 644 ~/.config/hypr/hyprland.conf
+```
+
+#### "NixOS export not available"
+**Problem**: Running on non-NixOS system
+**Solution**: NixOS export features are only available on NixOS systems. Use regular export (E key) instead.
+
+#### Configuration not taking effect
+**Problem**: Changes saved but not visible in Hyprland
+**Solution**:
+```bash
+# Manual reload
+hyprctl reload
+
+# Or restart Hyprland
+# Mod + Shift + M (default exit keybind)
+```
+
+### Debug Mode
+
+Run with debug output for troubleshooting:
 
 ```bash
-# Clone the repository
+r-hyprconfig --debug
+
+# Shows detailed logging:
+# - Configuration file operations
+# - hyprctl command execution
+# - Error stack traces
+# - Performance metrics
+```
+
+### Log Files
+
+Application logs are stored in:
+- Linux: `~/.local/share/r-hyprconfig/logs/`
+- macOS: `~/Library/Application Support/r-hyprconfig/logs/`
+
+## 🤝 Contributing
+
+We welcome contributions! Here's how to get started:
+
+### Development Setup
+
+```bash
+# Clone repository
 git clone https://github.com/olafkfreund/r-hyprconfig.git
 cd r-hyprconfig
 
-# Enter the development environment
+# Development with Nix (recommended)
 nix develop
 
-# Or with direnv (automatically loads when entering directory)
-echo "use flake" > .envrc
-direnv allow
-
-# Start developing
+# Or traditional Rust development
+cargo build
+cargo test
 cargo run -- --debug
 ```
 
 ### Development Environment Features
 
-The Nix flake provides a complete development environment with:
-
-- **Rust toolchain** (stable, with rust-analyzer, clippy, rustfmt)
-- **Development tools** (cargo-watch, cargo-audit, cargo-edit, etc.)
-- **System dependencies** (pkg-config, OpenSSL, etc.)
+The Nix flake provides:
+- **Rust toolchain** (stable with rust-analyzer, clippy, rustfmt)
+- **Development tools** (cargo-watch, cargo-audit, etc.)
+- **System dependencies** (pkg-config, OpenSSL)
 - **Pre-commit hooks** (formatting, linting, security audit)
-- **Task automation** (via justfile and devenv scripts)
 
-### Available Commands
+### Contribution Guidelines
 
-With the development environment loaded:
+1. **Code Style**: Follow `cargo fmt` and `cargo clippy` recommendations
+2. **Testing**: Add tests for new functionality
+3. **Documentation**: Update README and inline docs
+4. **Commits**: Use conventional commit messages
 
-```bash
-# Development commands
-just build          # Build debug version
-just run            # Run the application
-just test           # Run tests
-just lint           # Format and lint code
-just watch          # Auto-rebuild on changes
+### Areas for Contribution
 
-# Nix commands
-nix build           # Build with Nix
-nix run             # Run with Nix
-nix develop         # Enter dev shell
-devenv up           # Start development services
+- **New Themes**: Add more color schemes
+- **Configuration Options**: Support additional Hyprland settings
+- **Platform Support**: Testing on different distributions
+- **UI Improvements**: Enhanced TUI components
+- **Documentation**: Examples, tutorials, use cases
 
-# Package management
-just add-dep <crate>    # Add dependency
-just update-deps        # Update all dependencies
-just audit             # Security audit
-```
+## 📈 Roadmap
 
-### Project Structure
+### Current Version (v0.1.0)
+- ✅ Complete TUI interface
+- ✅ Real-time configuration editing
+- ✅ NixOS integration with export functionality
+- ✅ Batch configuration management
+- ✅ Multi-theme support
+- ✅ Search and filtering
 
-```
-├── src/
-│   ├── main.rs           # Entry point and CLI parsing
-│   ├── app.rs            # Application state and event loop
-│   ├── ui.rs             # TUI rendering and layout
-│   ├── hyprctl.rs        # Hyprland integration
-│   └── config.rs         # Configuration management
-├── templates/
-│   └── default_hyprland.conf  # Default configuration template
-├── .devcontainer/        # VS Code dev container config
-├── .github/workflows/    # CI/CD workflows
-├── flake.nix            # Nix flake with dev environment
-├── justfile             # Task automation
-└── .envrc               # direnv configuration
-```
+### Upcoming Features (v0.2.0)
+- [ ] Configuration validation with detailed error messages
+- [ ] Plugin system for custom configuration modules
+- [ ] Remote configuration management
+- [ ] Configuration synchronization between machines
+- [ ] Visual diff view for configuration changes
+- [ ] Backup and restore with timeline view
 
-### Building
+### Future Plans (v0.3.0+)
+- [ ] Integration with popular Hyprland theme repositories
+- [ ] Web interface for remote management
+- [ ] Mobile companion app for quick tweaks
+- [ ] AI-powered configuration optimization
+- [ ] Community configuration sharing platform
+- [ ] Multi-user configuration management
 
-#### With Nix (Recommended)
-```bash
-# Build with Nix (reproducible)
-nix build .#r-hyprconfig
-
-# Development build
-nix develop --command cargo build
-
-# Release build
-nix develop --command cargo build --release
-```
-
-#### Traditional Cargo
-```bash
-# Development build
-cargo build
-
-# Release build
-cargo build --release
-
-# Run tests
-cargo test
-
-# Check code quality
-cargo clippy
-```
-
-### VS Code Development
-
-The project includes a complete VS Code devcontainer setup:
-
-1. Install the "Dev Containers" extension
-2. Open the project in VS Code
-3. Click "Reopen in Container" when prompted
-4. The development environment will be automatically set up
-
-### Docker Development
-
-```bash
-# Build development container
-docker build --target development -t r-hyprconfig-dev .
-
-# Run development container
-docker run -it --rm -v $(pwd):/workspace r-hyprconfig-dev
-
-# Build production container
-docker build -t r-hyprconfig .
-```
-
-### Dependencies
-
-- **ratatui** - Terminal user interface framework
-- **crossterm** - Cross-platform terminal manipulation
-- **tokio** - Async runtime for hyprctl commands
-- **serde** - Serialization for configuration files
-- **clap** - Command line argument parsing
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit pull requests or open issues.
-
-### Development Guidelines
-
-1. Follow Rust best practices and idioms
-2. Maintain compatibility with the latest stable Rust
-3. Add tests for new functionality
-4. Update documentation for user-facing changes
-
-## License
+## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Acknowledgments
+## 🙏 Acknowledgments
 
-- [Hyprland](https://hyprland.org/) - The amazing wayland compositor this tool is built for
-- [ratatui](https://github.com/ratatui-org/ratatui) - The excellent TUI framework
-- The Rust community for the amazing ecosystem
+- [Hyprland](https://hyprland.org/) - The amazing Wayland compositor
+- [ratatui](https://github.com/ratatui-org/ratatui) - Excellent TUI framework
+- [NixOS](https://nixos.org/) - Inspiration for declarative configuration
+- The Rust community for the incredible ecosystem
 
-## Roadmap
+## 📞 Support
 
-- [ ] Configuration value editing and validation
-- [ ] Real-time preview of changes
-- [ ] Configuration import/export
-- [ ] Plugin system for custom configurations
-- [ ] Integration with popular Hyprland themes
+- **GitHub Issues**: [Report bugs or request features](https://github.com/olafkfreund/r-hyprconfig/issues)
+- **Discussions**: [Community discussions](https://github.com/olafkfreund/r-hyprconfig/discussions)
+- **Discord**: Join the Hyprland community for real-time help
+
+---
+
+**Made with ❤️ for the Hyprland community**

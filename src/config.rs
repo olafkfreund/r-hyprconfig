@@ -1,5 +1,5 @@
+use crate::nixos::{NixConfigType, NixOSEnvironment};
 use crate::theme::ColorScheme;
-use crate::nixos::{NixOSEnvironment, NixConfigType};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -15,7 +15,7 @@ pub struct Config {
     pub current_values: HashMap<String, String>,
     #[serde(default)]
     pub theme: ColorScheme,
-    
+
     // NixOS-specific configuration
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nixos_config_type: Option<NixConfigType>,
@@ -28,7 +28,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         let nixos_env = NixOSEnvironment::detect();
-        
+
         Self {
             hyprland_config_path: Self::default_hyprland_config_path(),
             backup_enabled: true,
@@ -36,8 +36,12 @@ impl Default for Config {
             nixos_mode: nixos_env.is_nixos,
             current_values: HashMap::new(),
             theme: ColorScheme::default(),
-            nixos_config_type: nixos_env.get_primary_config_location().map(|loc| loc.config_type.clone()),
-            nixos_config_path: nixos_env.get_primary_config_location().map(|loc| loc.path.clone()),
+            nixos_config_type: nixos_env
+                .get_primary_config_location()
+                .map(|loc| loc.config_type.clone()),
+            nixos_config_path: nixos_env
+                .get_primary_config_location()
+                .map(|loc| loc.path.clone()),
             nixos_auto_rebuild: false,
         }
     }

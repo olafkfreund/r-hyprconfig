@@ -14,7 +14,7 @@ impl NixParser {
     pub fn new() -> Self {
         Self {}
     }
-    
+
     // Placeholder for future Nix parsing functionality
     #[allow(dead_code)]
     pub fn parse_expression(&self, _content: &str) -> Result<NixExpression, anyhow::Error> {

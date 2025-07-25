@@ -2,11 +2,12 @@ use anyhow::Result;
 use clap::Parser;
 
 mod app;
+mod batch;
 mod config;
 mod hyprctl;
+mod nixos;
 mod theme;
 mod ui;
-mod nixos;
 
 use app::App;
 

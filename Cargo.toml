@@ -7,6 +7,36 @@ license = "MIT"
 repository = "https://github.com/olafkfreund/r-hyprconfig"
 keywords = ["hyprland", "tui", "configuration", "rust"]
 categories = ["command-line-utilities", "config"]
+authors = ["Olaf Freund <olafkfreund@example.com>"]
+homepage = "https://github.com/olafkfreund/r-hyprconfig"
+documentation = "https://github.com/olafkfreund/r-hyprconfig/blob/main/README.md"
+
+# Package metadata for deb generation
+[package.metadata.deb]
+maintainer = "Olaf Freund <olafkfreund@example.com>"
+copyright = "2025, Olaf Freund <olafkfreund@example.com>"
+license-file = ["LICENSE", "4"]
+extended-description = """\
+r-hyprconfig is a modern terminal user interface (TUI) application \
+that helps Hyprland users visually configure their window manager settings \
+by providing an intuitive interface for hyprctl commands with automatic \
+config file management for both standard Linux distributions and NixOS workflows."""
+depends = "$auto"
+section = "utils"
+priority = "optional"
+assets = [
+    ["target/release/r-hyprconfig", "usr/bin/", "755"],
+    ["README.md", "usr/share/doc/r-hyprconfig/", "644"],
+]
+
+# Package metadata for RPM generation  
+[package.metadata.generate-rpm]
+license = "MIT"
+summary = "A modern TUI for managing Hyprland configuration"
+assets = [
+    { source = "target/release/r-hyprconfig", dest = "/usr/bin/r-hyprconfig", mode = "755" },
+    { source = "README.md", dest = "/usr/share/doc/r-hyprconfig/README.md", mode = "644", doc = true },
+]
 
 [dependencies]
 ratatui = "0.28"
@@ -21,3 +51,6 @@ dirs = "5.0"
 chrono = { version = "0.4", features = ["serde"] }
 which = "6.0"
 shellexpand = "3.1"
+
+[dev-dependencies]
+tempfile = "3.8"

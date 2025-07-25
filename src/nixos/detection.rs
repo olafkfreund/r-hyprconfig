@@ -1,11 +1,11 @@
+use super::{NixConfigLocation, NixConfigType, NixOSEnvironment};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use super::{NixOSEnvironment, NixConfigLocation, NixConfigType};
 
 pub fn detect_nixos_environment() -> NixOSEnvironment {
     let is_nixos = is_nixos_system();
-    
+
     if is_nixos {
         NixOSEnvironment {
             is_nixos,
@@ -27,12 +27,12 @@ fn is_nixos_system() -> bool {
     if Path::new("/etc/NIXOS").exists() {
         return true;
     }
-    
+
     // Method 2: Check for NIX_STORE environment variable
     if std::env::var("NIX_STORE").is_ok() {
         return true;
     }
-    
+
     // Method 3: Check if nixos-rebuild command exists
     if Command::new("which")
         .arg("nixos-rebuild")
@@ -42,12 +42,12 @@ fn is_nixos_system() -> bool {
     {
         return true;
     }
-    
+
     // Method 4: Check /nix/store directory
     if Path::new("/nix/store").exists() {
         return true;
     }
-    
+
     // Method 5: Check for nix-env command (indicates Nix is installed)
     if Command::new("which")
         .arg("nix-env")
@@ -57,7 +57,7 @@ fn is_nixos_system() -> bool {
     {
         return true;
     }
-    
+
     false
 }
 
@@ -69,7 +69,7 @@ fn detect_nix_store() -> Option<PathBuf> {
             return Some(path);
         }
     }
-    
+
     // Default location
     let default_store = PathBuf::from("/nix/store");
     if default_store.exists() {
@@ -84,7 +84,7 @@ fn detect_nixos_version() -> Option<String> {
     if let Ok(version) = fs::read_to_string("/etc/nixos-version") {
         return Some(version.trim().to_string());
     }
-    
+
     // Try nixos-version command
     if let Ok(output) = Command::new("nixos-version").output() {
         if output.status.success() {
@@ -93,7 +93,7 @@ fn detect_nixos_version() -> Option<String> {
             }
         }
     }
-    
+
     None
 }
 
@@ -107,13 +107,13 @@ fn detect_home_manager() -> bool {
     {
         return true;
     }
-    
+
     // Check for home-manager in common locations
     let home_manager_paths = [
         "/nix/var/nix/profiles/per-user/*/home-manager/bin/home-manager",
         "~/.nix-profile/bin/home-manager",
     ];
-    
+
     for path_pattern in &home_manager_paths {
         if let Ok(expanded) = shellexpand::full(path_pattern) {
             if Path::new(&*expanded).exists() {
@@ -121,13 +121,13 @@ fn detect_home_manager() -> bool {
             }
         }
     }
-    
+
     false
 }
 
 fn discover_config_locations() -> Vec<NixConfigLocation> {
     let mut locations = Vec::new();
-    
+
     // System configuration
     let system_config = PathBuf::from("/etc/nixos/configuration.nix");
     locations.push(NixConfigLocation {
@@ -136,7 +136,7 @@ fn discover_config_locations() -> Vec<NixConfigLocation> {
         exists: system_config.exists(),
         has_hyprland_config: system_config.exists() && check_hyprland_in_file(&system_config),
     });
-    
+
     // Home Manager configuration (traditional)
     if let Some(home_dir) = dirs::home_dir() {
         let home_manager_config = home_dir.join(".config/nixpkgs/home.nix");
@@ -144,19 +144,20 @@ fn discover_config_locations() -> Vec<NixConfigLocation> {
             config_type: NixConfigType::HomeManager,
             path: home_manager_config.clone(),
             exists: home_manager_config.exists(),
-            has_hyprland_config: home_manager_config.exists() && check_hyprland_in_file(&home_manager_config),
+            has_hyprland_config: home_manager_config.exists()
+                && check_hyprland_in_file(&home_manager_config),
         });
     }
-    
+
     // Look for flake-based configurations
     locations.extend(discover_flake_configs());
-    
+
     locations
 }
 
 fn discover_flake_configs() -> Vec<NixConfigLocation> {
     let mut flake_locations = Vec::new();
-    
+
     // Common flake locations to check
     let flake_paths = [
         "/etc/nixos/flake.nix",
@@ -164,7 +165,7 @@ fn discover_flake_configs() -> Vec<NixConfigLocation> {
         "~/.config/home-manager/flake.nix",
         "./flake.nix", // Current directory
     ];
-    
+
     for path_pattern in &flake_paths {
         if let Ok(expanded) = shellexpand::full(path_pattern) {
             let flake_path = PathBuf::from(&*expanded);
@@ -175,7 +176,7 @@ fn discover_flake_configs() -> Vec<NixConfigLocation> {
                 } else {
                     NixConfigType::FlakeSystem
                 };
-                
+
                 flake_locations.push(NixConfigLocation {
                     config_type,
                     path: flake_path.clone(),
@@ -185,7 +186,7 @@ fn discover_flake_configs() -> Vec<NixConfigLocation> {
             }
         }
     }
-    
+
     flake_locations
 }
 
@@ -198,7 +199,7 @@ fn check_hyprland_in_file(path: &Path) -> bool {
             "hyprland.enable",
             "services.hyprland",
         ];
-        
+
         for indicator in &hyprland_indicators {
             if content.contains(indicator) {
                 return true;
@@ -217,7 +218,7 @@ fn check_hyprland_in_flake(path: &Path) -> bool {
             "programs.hyprland",
             "wayland.windowManager.hyprland",
         ];
-        
+
         for indicator in &hyprland_indicators {
             if content.contains(indicator) {
                 return true;
@@ -230,27 +231,30 @@ fn check_hyprland_in_flake(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_nixos_detection() {
         // This test will work differently depending on the environment
         let env = detect_nixos_environment();
-        
+
         // On NixOS systems, should detect correctly
         if Path::new("/etc/NIXOS").exists() {
             assert!(env.is_nixos);
         }
     }
-    
+
     #[test]
     fn test_config_location_discovery() {
         let locations = discover_config_locations();
-        
+
         // Should always return at least the system config location
         assert!(!locations.is_empty());
-        
+
         // First location should be system config
         assert_eq!(locations[0].config_type, NixConfigType::SystemConfig);
-        assert_eq!(locations[0].path, PathBuf::from("/etc/nixos/configuration.nix"));
+        assert_eq!(
+            locations[0].path,
+            PathBuf::from("/etc/nixos/configuration.nix")
+        );
     }
 }
