@@ -81,7 +81,12 @@ jobs:
           -C pkg \
           usr/local/bin/r-hyprconfig=/usr/local/bin/r-hyprconfig
         
-        mv *.deb r-hyprconfig_${{ github.ref_name }}_${{ matrix.arch }}.deb
+        # Check what DEB file was created and rename if necessary
+        DEB_FILE=$(ls *.deb)
+        TARGET_FILE="r-hyprconfig_${{ github.ref_name }}_${{ matrix.arch }}.deb"
+        if [ "$DEB_FILE" != "$TARGET_FILE" ]; then
+          mv "$DEB_FILE" "$TARGET_FILE"
+        fi
 
     - name: Build RPM package
       if: matrix.package_type == 'rpm'
@@ -104,7 +109,12 @@ jobs:
           -C pkg \
           usr/local/bin/r-hyprconfig=/usr/local/bin/r-hyprconfig
         
-        mv *.rpm r-hyprconfig-${{ github.ref_name }}-1.${{ matrix.arch }}.rpm
+        # Check what RPM file was created and rename if necessary
+        RPM_FILE=$(ls *.rpm)
+        TARGET_FILE="r-hyprconfig-${{ github.ref_name }}-1.${{ matrix.arch }}.rpm"
+        if [ "$RPM_FILE" != "$TARGET_FILE" ]; then
+          mv "$RPM_FILE" "$TARGET_FILE"
+        fi
 
     - name: Upload package artifacts
       uses: actions/upload-artifact@v4
