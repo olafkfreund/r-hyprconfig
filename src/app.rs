@@ -793,7 +793,7 @@ impl App {
             .await
         {
             self.ui.show_popup = true;
-            self.ui.popup_message = format!("Validation failed: {}", validation_error);
+            self.ui.popup_message = format!("Validation failed: {validation_error}");
             return Err(validation_error);
         }
 
@@ -1355,9 +1355,9 @@ impl App {
                             };
                             match (min, max) {
                                 (Some(min_val), Some(max_val)) => {
-                                    format!("{} (range: {} - {})", new_val, min_val, max_val)
+                                    format!("{new_val} (range: {min_val} - {max_val})")
                                 }
-                                _ => format!("{} (no range limit)", new_val),
+                                _ => format!("{new_val} (no range limit)"),
                             }
                         }
                         crate::ui::ConfigDataType::Float { min, max, .. } => {
@@ -1370,9 +1370,9 @@ impl App {
                             };
                             match (min, max) {
                                 (Some(min_val), Some(max_val)) => {
-                                    format!("{:.2} (range: {} - {})", new_val, min_val, max_val)
+                                    format!("{new_val:.2} (range: {min_val} - {max_val})")
                                 }
-                                _ => format!("{:.2} (no range limit)", new_val),
+                                _ => format!("{new_val:.2} (no range limit)"),
                             }
                         }
                         crate::ui::ConfigDataType::Boolean => {
@@ -1384,7 +1384,7 @@ impl App {
                         }
                         crate::ui::ConfigDataType::Color => "#FF5555 (example color)".to_string(),
                         crate::ui::ConfigDataType::String => {
-                            format!("{} (modified)", before_value)
+                            format!("{before_value} (modified)")
                         }
                         crate::ui::ConfigDataType::Keyword { options } => options
                             .iter()
@@ -1469,7 +1469,7 @@ impl App {
         // Validate configuration values
         for (key, value) in config_changes {
             if let Err(error) = self.validate_config_option(key, value).await {
-                validation_errors.push(format!("Config option '{}': {}", key, error));
+                validation_errors.push(format!("Config option '{key}': {error}"));
             }
         }
 
@@ -1523,7 +1523,7 @@ impl App {
                     return Err(anyhow::anyhow!("must be a valid decimal number"));
                 }
                 let val = value.parse::<f32>().unwrap();
-                if k.contains("opacity") && (val < 0.0 || val > 1.0) {
+                if k.contains("opacity") && !(0.0..=1.0).contains(&val) {
                     return Err(anyhow::anyhow!("opacity must be between 0.0 and 1.0"));
                 }
             }
