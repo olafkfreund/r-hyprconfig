@@ -2239,6 +2239,8 @@ impl UI {
             FocusedPanel::WindowRules,
             FocusedPanel::LayerRules,
             FocusedPanel::Misc,
+            FocusedPanel::Import,
+            FocusedPanel::Export,
         ];
 
         let tab_spans: Vec<Span> = tabs
@@ -2253,7 +2255,7 @@ impl UI {
                     FocusedPanel::Gestures => "Gestures",
                     FocusedPanel::Binds => "Binds",
                     FocusedPanel::WindowRules => "Win Rules",
-                    FocusedPanel::LayerRules => "Layer Rules",
+                    FocusedPanel::LayerRules => "Layers",
                     FocusedPanel::Misc => "Misc",
                     FocusedPanel::Import => "Import",
                     FocusedPanel::Export => "Export",

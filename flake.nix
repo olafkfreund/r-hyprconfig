@@ -67,7 +67,7 @@
         # The main r-hyprconfig package
         r-hyprconfig = pkgs.rustPlatform.buildRustPackage {
           pname = "r-hyprconfig";
-          version = "1.0.3";
+          version = "1.0.4";
           src = ./.;
 
           cargoLock = {
