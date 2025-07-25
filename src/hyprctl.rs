@@ -214,16 +214,16 @@ impl HyprCtl {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        
+
         // Parse the structured output from hyprctl getoption
         // Example output:
         // int: 2
         // set: true
-        // 
+        //
         // or:
         // custom type: 2 2 2 2
         // set: true
-        
+
         for line in stdout.lines() {
             let line = line.trim();
             if line.starts_with("int: ") {
@@ -243,7 +243,7 @@ impl HyprCtl {
                 return Ok(line.to_string());
             }
         }
-        
+
         // Fallback to original behavior
         Ok(stdout.trim().to_string())
     }
@@ -424,10 +424,10 @@ impl HyprCtl {
         // Parse the structured output format
         let lines: Vec<&str> = stdout.lines().collect();
         let mut i = 0;
-        
+
         while i < lines.len() {
             let line = lines[i].trim();
-            
+
             // Look for bind type lines (bind, binde, bindm, bindl, etc.)
             if line.starts_with("bind") && !line.contains(':') {
                 if let Some(keybind) = Self::parse_structured_bind(&lines, i) {
@@ -444,11 +444,11 @@ impl HyprCtl {
         // Parse the structured hyprctl binds output format:
         // bind
         //     modmask: 64
-        //     submap: 
+        //     submap:
         //     key: N
         //     keycode: 0
         //     catchall: false
-        //     description: 
+        //     description:
         //     dispatcher: exec
         //     arg: swaync-client -t -sw
 
@@ -466,17 +466,17 @@ impl HyprCtl {
         let mut i = start_index + 1;
         while i < lines.len() {
             let line = lines[i].trim();
-            
+
             // Stop if we hit another bind definition
             if line.starts_with("bind") && !line.contains(':') {
                 break;
             }
-            
+
             // Parse key-value pairs
             if let Some((key_name, value)) = line.split_once(':') {
                 let key_name = key_name.trim();
                 let value = value.trim();
-                
+
                 match key_name {
                     "modmask" => {
                         if let Ok(mask) = value.parse::<u32>() {
@@ -501,7 +501,7 @@ impl HyprCtl {
                     _ => {} // Ignore other fields
                 }
             }
-            
+
             i += 1;
         }
 
