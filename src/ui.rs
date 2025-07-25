@@ -174,6 +174,7 @@ pub struct UI {
     pub last_preview_time: std::time::Instant,
     pub pending_preview_change: Option<(String, String)>, // (key, value)
     pub preview_original_value: Option<String>, // Store original value for rollback
+    pub pending_deletion: Option<(FocusedPanel, String)>, // (panel, key) for items pending deletion
 
     // Lazy loading / pagination support
     pub page_size: usize,
@@ -274,6 +275,7 @@ impl UI {
             last_preview_time: std::time::Instant::now(),
             pending_preview_change: None,
             preview_original_value: None,
+            pending_deletion: None,
 
             // Lazy loading / pagination
             page_size: 50, // Show 50 items per page for smooth performance
@@ -5337,5 +5339,125 @@ impl UI {
                 Constraint::Percentage((100 - percent_x) / 2),
             ])
             .split(popup_layout[1])[1]
+    }
+
+    pub fn start_add_keybind(&mut self) {
+        // Start editing mode to add a new keybind
+        let empty_item = ConfigItem {
+            key: format!("new_keybind_{}", chrono::Utc::now().timestamp()),
+            value: "SUPER, , exec, ".to_string(),
+            description: "New keybinding".to_string(),
+            data_type: ConfigDataType::String,
+            suggestions: vec!["SUPER".to_string(), "ALT".to_string(), "CTRL".to_string(), "SHIFT".to_string()],
+        };
+        
+        // Add the new item to the Binds panel
+        self.config_items.entry(crate::app::FocusedPanel::Binds)
+            .or_insert_with(Vec::new)
+            .push(empty_item);
+            
+        // Select the newly added item and start editing
+        if let Some(items) = self.config_items.get(&crate::app::FocusedPanel::Binds) {
+            self.binds_list_state.select(Some(items.len() - 1));
+        }
+        // Note: start_editing is async, but we can't await here since this method is not async
+        // The edit will be started when the user presses Enter on the selected item
+    }
+
+    pub fn start_add_window_rule(&mut self) {
+        // Start editing mode to add a new window rule
+        let empty_item = ConfigItem {
+            key: format!("new_window_rule_{}", chrono::Utc::now().timestamp()),
+            value: "float, ^()$".to_string(),
+            description: "New window rule".to_string(),
+            data_type: ConfigDataType::String,
+            suggestions: vec!["float".to_string(), "size".to_string(), "opacity".to_string(), "workspace".to_string()],
+        };
+        
+        // Add the new item to the WindowRules panel
+        self.config_items.entry(crate::app::FocusedPanel::WindowRules)
+            .or_insert_with(Vec::new)
+            .push(empty_item);
+            
+        // Select the newly added item and start editing
+        if let Some(items) = self.config_items.get(&crate::app::FocusedPanel::WindowRules) {
+            self.window_rules_list_state.select(Some(items.len() - 1));
+        }
+        // Note: start_editing is async, but we can't await here since this method is not async
+        // The edit will be started when the user presses Enter on the selected item
+    }
+
+    pub fn start_add_layer_rule(&mut self) {
+        // Start editing mode to add a new layer rule
+        let empty_item = ConfigItem {
+            key: format!("new_layer_rule_{}", chrono::Utc::now().timestamp()),
+            value: "blur, ".to_string(),
+            description: "New layer rule".to_string(),
+            data_type: ConfigDataType::String,
+            suggestions: vec!["blur".to_string(), "ignorezero".to_string(), "ignorealpha".to_string()],
+        };
+        
+        // Add the new item to the LayerRules panel
+        self.config_items.entry(crate::app::FocusedPanel::LayerRules)
+            .or_insert_with(Vec::new)
+            .push(empty_item);
+            
+        // Select the newly added item and start editing
+        if let Some(items) = self.config_items.get(&crate::app::FocusedPanel::LayerRules) {
+            self.layer_rules_list_state.select(Some(items.len() - 1));
+        }
+        // Note: start_editing is async, but we can't await here since this method is not async
+        // The edit will be started when the user presses Enter on the selected item
+    }
+
+    pub fn get_selected_item(&self) -> Option<&ConfigItem> {
+        // Get the currently selected item from the current panel
+        let items = self.config_items.get(&self.current_tab)?;
+        let selected_index = match self.current_tab {
+            crate::app::FocusedPanel::General => self.general_list_state.selected()?,
+            crate::app::FocusedPanel::Input => self.input_list_state.selected()?,
+            crate::app::FocusedPanel::Decoration => self.decoration_list_state.selected()?,
+            crate::app::FocusedPanel::Animations => self.animations_list_state.selected()?,
+            crate::app::FocusedPanel::Gestures => self.gestures_list_state.selected()?,
+            crate::app::FocusedPanel::Binds => self.binds_list_state.selected()?,
+            crate::app::FocusedPanel::WindowRules => self.window_rules_list_state.selected()?,
+            crate::app::FocusedPanel::LayerRules => self.layer_rules_list_state.selected()?,
+            crate::app::FocusedPanel::Misc => self.misc_list_state.selected()?,
+            _ => None?,
+        };
+        items.get(selected_index)
+    }
+
+    pub fn delete_item(&mut self, panel: &FocusedPanel, key: &str) -> bool {
+        // Remove the item with the given key from the specified panel
+        if let Some(items) = self.config_items.get_mut(panel) {
+            if let Some(index) = items.iter().position(|item| item.key == key) {
+                items.remove(index);
+                
+                // Adjust the selection if needed
+                let list_state = match panel {
+                    crate::app::FocusedPanel::General => &mut self.general_list_state,
+                    crate::app::FocusedPanel::Input => &mut self.input_list_state,
+                    crate::app::FocusedPanel::Decoration => &mut self.decoration_list_state,
+                    crate::app::FocusedPanel::Animations => &mut self.animations_list_state,
+                    crate::app::FocusedPanel::Gestures => &mut self.gestures_list_state,
+                    crate::app::FocusedPanel::Binds => &mut self.binds_list_state,
+                    crate::app::FocusedPanel::WindowRules => &mut self.window_rules_list_state,
+                    crate::app::FocusedPanel::LayerRules => &mut self.layer_rules_list_state,
+                    crate::app::FocusedPanel::Misc => &mut self.misc_list_state,
+                    _ => return false,
+                };
+                
+                if let Some(selected) = list_state.selected() {
+                    if selected >= items.len() && !items.is_empty() {
+                        list_state.select(Some(items.len() - 1));
+                    } else if items.is_empty() {
+                        list_state.select(None);
+                    }
+                }
+                return true;
+            }
+        }
+        false
     }
 }

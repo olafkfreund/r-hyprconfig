@@ -296,10 +296,10 @@ impl App {
                 // TODO: Add item functionality
             }
             KeyCode::Char('d') | KeyCode::Char('D') => {
-                // TODO: Delete item functionality
+                self.show_delete_item_dialog().await;
             }
             KeyCode::Char('i') | KeyCode::Char('I') => {
-                // TODO: Insert/Add item functionality
+                self.show_add_item_dialog().await;
             }
             KeyCode::Char('/') => {
                 self.ui.start_search_debounced();
@@ -412,12 +412,38 @@ impl App {
     }
 
     async fn handle_popup_key(&mut self, key: KeyCode) -> Result<()> {
-        match key {
-            KeyCode::Enter | KeyCode::Esc => {
-                self.ui.show_popup = false;
-                self.ui.popup_message.clear();
+        // Check if this is a deletion confirmation popup
+        if let Some((panel, item_key)) = &self.ui.pending_deletion {
+            match key {
+                KeyCode::Char('y') | KeyCode::Char('Y') => {
+                    // Confirm deletion
+                    let panel_clone = panel.clone();
+                    let key_clone = item_key.clone();
+                    if self.ui.delete_item(&panel_clone, &key_clone) {
+                        self.ui.show_popup = true;
+                        self.ui.popup_message = "Item deleted successfully!".to_string();
+                    } else {
+                        self.ui.show_popup = true;
+                        self.ui.popup_message = "Failed to delete item - item not found.".to_string();
+                    }
+                    self.ui.pending_deletion = None;
+                }
+                _ => {
+                    // Cancel deletion on any other key
+                    self.ui.pending_deletion = None;
+                    self.ui.show_popup = false;
+                    self.ui.popup_message.clear();
+                }
             }
-            _ => {}
+        } else {
+            // Normal popup handling
+            match key {
+                KeyCode::Enter | KeyCode::Esc => {
+                    self.ui.show_popup = false;
+                    self.ui.popup_message.clear();
+                }
+                _ => {}
+            }
         }
         Ok(())
     }
@@ -2056,5 +2082,71 @@ impl App {
             }
         }
         self.ui.show_export_dialog = false;
+    }
+
+    async fn show_add_item_dialog(&mut self) {
+        // Show dialog to add new configuration items based on current panel
+        match self.ui.current_tab {
+            crate::app::FocusedPanel::Binds => {
+                self.ui.show_popup = true;
+                self.ui.popup_message = "Add Keybind: Press Enter to add a new keybinding (format: SUPER, q, exec, kitty)".to_string();
+                // Start editing mode for adding new keybind
+                self.ui.start_add_keybind();
+            }
+            crate::app::FocusedPanel::WindowRules => {
+                self.ui.show_popup = true;
+                self.ui.popup_message = "Add Window Rule: Press Enter to add a new window rule (format: float, ^(kitty)$)".to_string();
+                // Start editing mode for adding new window rule
+                self.ui.start_add_window_rule();
+            }
+            crate::app::FocusedPanel::LayerRules => {
+                self.ui.show_popup = true;
+                self.ui.popup_message = "Add Layer Rule: Press Enter to add a new layer rule".to_string();
+                // Start editing mode for adding new layer rule
+                self.ui.start_add_layer_rule();
+            }
+            _ => {
+                self.ui.show_popup = true;
+                self.ui.popup_message = "Add Item: Not available for this panel. Use 'I' key in Binds, Window Rules, or Layer Rules panels.".to_string();
+            }
+        }
+    }
+
+    async fn show_delete_item_dialog(&mut self) {
+        // Show dialog to delete the currently selected item
+        match self.ui.current_tab {
+            crate::app::FocusedPanel::Binds => {
+                if let Some(selected) = self.ui.get_selected_item() {
+                    let value = selected.value.clone();
+                    let key = selected.key.clone();
+                    self.ui.show_popup = true;
+                    self.ui.popup_message = format!("Delete Keybind: '{}' - Press 'Y' to confirm, any other key to cancel", value);
+                    // Set a flag to handle deletion on next key press
+                    self.ui.pending_deletion = Some((self.ui.current_tab.clone(), key));
+                }
+            }
+            crate::app::FocusedPanel::WindowRules => {
+                if let Some(selected) = self.ui.get_selected_item() {
+                    let value = selected.value.clone();
+                    let key = selected.key.clone();
+                    self.ui.show_popup = true;
+                    self.ui.popup_message = format!("Delete Window Rule: '{}' - Press 'Y' to confirm, any other key to cancel", value);
+                    self.ui.pending_deletion = Some((self.ui.current_tab.clone(), key));
+                }
+            }
+            crate::app::FocusedPanel::LayerRules => {
+                if let Some(selected) = self.ui.get_selected_item() {
+                    let value = selected.value.clone();
+                    let key = selected.key.clone();
+                    self.ui.show_popup = true;
+                    self.ui.popup_message = format!("Delete Layer Rule: '{}' - Press 'Y' to confirm, any other key to cancel", value);
+                    self.ui.pending_deletion = Some((self.ui.current_tab.clone(), key));
+                }
+            }
+            _ => {
+                self.ui.show_popup = true;
+                self.ui.popup_message = "Delete Item: Not available for this panel. Use 'D' key in Binds, Window Rules, or Layer Rules panels.".to_string();
+            }
+        }
     }
 }
