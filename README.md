@@ -9,6 +9,22 @@ A production-ready terminal user interface for managing Hyprland window manager 
 ![Version](https://img.shields.io/badge/version-v1.0.0-green.svg)
 ![Platform](https://img.shields.io/badge/platform-Linux-lightgrey.svg)
 
+![r-hyprconfig in action](images/screenshot-20250725-125826.png)
+
+## ⚡ Quick Start
+
+```bash
+# Install from GitHub releases
+wget https://github.com/olafkfreund/r-hyprconfig/releases/download/v1.0.0/r-hyprconfig_v1.0.0_amd64.deb
+sudo dpkg -i r-hyprconfig_v1.0.0_amd64.deb
+
+# Or run with Nix
+nix run github:olafkfreund/r-hyprconfig/v1.0.0
+
+# Start configuring
+r-hyprconfig
+```
+
 ## 🚀 Features
 
 ### 🎨 **Modern TUI Interface**
@@ -199,91 +215,21 @@ r-hyprconfig
 
 ## 📱 Application Screenshots
 
-### Main Interface
-```
-┌─ r-hyprconfig v0.1.0 ─ NixOS Detected ─ Theme: Nord ────────────────────────────┐
-│ ⚙️  Hyprland Configuration Manager                                               │
-│ 🏠 Config: ~/.config/hypr/hyprland.conf                                        │
-│ 📦 NixOS: Home Manager + Flakes                                                │
-└──────────────────────────────────────────────────────────────────────────────┘
+### Main Interface - General Configuration Panel
+![Main Interface](images/screenshot-20250725-125826.png)
+*Clean, intuitive TUI interface showing General configuration options with tab navigation*
 
-┌─ Configuration Panels ──────────────────────────────────────────────────────────┐
-│ [General] [Input] [Decoration] [Animations] [Gestures] [Binds] [Rules] [Misc]   │
-└──────────────────────────────────────────────────────────────────────────────┘
+### Configuration Editing in Action
+![Configuration Editing](images/screenshot-20250725-125852.png)
+*Real-time configuration editing with validation and user-friendly interface*
 
-┌─ General Configuration ──────────────────────────────────────────────┐
-│ ✓ gaps_in                              5           │ Inner window gaps │
-│   gaps_out                            10           │ Outer window gaps │
-│   border_size                          2           │ Window border size│
-│   col.active_border                 0xff5e81ac     │ Active border     │
-│   col.inactive_border               0xff3b4252     │ Inactive border   │
-│   cursor_inactive_timeout             0           │ Hide cursor delay │
-│   layout                             dwindle      │ Default layout    │
-│   no_cursor_warps                     false       │ Disable warping   │
-│   resize_on_border                    false       │ Resize on border  │
-│   extend_border_grab_area              5          │ Border grab area  │
-└──────────────────────────────────────────────────────────────────────┘
+### Multiple Configuration Panels
+![Multiple Panels](images/screenshot-20250725-125911.png)
+*Navigate between different configuration sections: Input, Decoration, Animations, etc.*
 
-┌─ Help ─────────────────────────────────────────────────────────────────────────┐
-│ Navigation: ↑/↓ Select  Tab/Shift+Tab Switch Panel  Enter Edit  Esc Cancel     │
-│ Actions: S Save  R Reload  N NixOS Export  B Batch  E Export  M Import         │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
-
-### NixOS Export Dialog
-```
-┌─ Export as NixOS Configuration ──────────────────────────────────────────────────┐
-│                                                                                  │
-│ Choose NixOS configuration type:                                                 │
-│                                                                                  │
-│ 1. Home Manager (standalone)       - ~/.config/nixpkgs/home.nix                │
-│ 2. System Configuration           - /etc/nixos/configuration.nix                │
-│ 3. Flake Home Manager     ← [*]   - flake.nix with Home Manager               │
-│ 4. Flake NixOS System             - flake.nix with NixOS                       │
-│                                                                                  │
-│ ┌─ Preview ────────────────────────────────────────────────────────────────────┐ │
-│ │ {                                                                           │ │
-│ │   wayland.windowManager.hyprland = {                                       │ │
-│ │     enable = true;                                                          │ │
-│ │     settings = {                                                            │ │
-│ │       general = {                                                           │ │
-│ │         gaps_in = 5;                                                        │ │
-│ │         gaps_out = 10;                                                      │ │
-│ │         border_size = 2;                                                    │ │
-│ │       };                                                                    │ │
-│ │       bind = [                                                              │ │
-│ │         "SUPER, Q, exec, kitty"                                            │ │
-│ │         "SUPER, W, killactive"                                             │ │
-│ │       ];                                                                    │ │
-│ │     };                                                                      │ │
-│ │   };                                                                        │ │
-│ │ }                                                                           │ │
-│ └─────────────────────────────────────────────────────────────────────────────┘ │
-│                                                                                  │
-│ Press Enter to export • Esc to cancel                                          │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Batch Management Dialog
-```
-┌─ Batch Configuration Management ─────────────────────────────────────────────────┐
-│                                                                                  │
-│ 🔧 Batch Configuration Management                                                │
-│                                                                                  │
-│ Manage configuration profiles:                                                   │
-│                                                                                  │
-│ 1. Create new profile from current config                                       │
-│ 2. Select existing profile for operations                                       │
-│ 3. Delete profile                                                               │
-│                                                                                  │
-│ Current profiles:                                                                │
-│ • developer-workstation-v1 (created: 2025-01-15)                              │
-│ • gaming-setup (created: 2025-01-14)                                           │
-│ • minimal-productivity (created: 2025-01-10)                                   │
-│                                                                                  │
-│ Press Esc to cancel                                                             │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
+### Advanced Features and Help
+![Advanced Features](images/screenshot-20250725-130011.png)
+*Built-in help system, search functionality, and comprehensive keyboard shortcuts*
 
 ## 🛠️ Installation
 
