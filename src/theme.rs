@@ -1,5 +1,6 @@
 use ratatui::style::{Color, Style};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ColorScheme {
@@ -18,12 +19,14 @@ impl Default for ColorScheme {
 
 #[derive(Debug, Clone)]
 pub struct Theme {
+    #[allow(dead_code)]
     pub name: String,
     pub scheme: ColorScheme,
 
     // Background colors
     pub bg_primary: Color,
     pub bg_secondary: Color,
+    #[allow(dead_code)]
     pub bg_tertiary: Color,
     pub bg_selected: Color,
     pub bg_search: Color,
@@ -45,6 +48,7 @@ pub struct Theme {
     // Border colors
     pub border_normal: Color,
     pub border_focused: Color,
+    #[allow(dead_code)]
     pub border_active: Color,
 
     // Data type colors
@@ -287,10 +291,12 @@ impl Theme {
         }
     }
 
+    #[allow(dead_code)]
     pub fn list_style(&self) -> Style {
         Style::default().fg(self.fg_primary).bg(self.bg_primary)
     }
 
+    #[allow(dead_code)]
     pub fn selected_style(&self) -> Style {
         Style::default().fg(self.fg_bright).bg(self.bg_selected)
     }
@@ -323,10 +329,12 @@ impl Theme {
         Style::default().fg(color)
     }
 
+    #[allow(dead_code)]
     pub fn footer_style(&self) -> Style {
         Style::default().fg(self.fg_secondary).bg(self.bg_primary)
     }
 
+    #[allow(dead_code)]
     pub fn popup_style(&self) -> Style {
         Style::default().fg(self.fg_primary).bg(self.bg_secondary)
     }
@@ -360,7 +368,23 @@ impl std::fmt::Display for ColorScheme {
     }
 }
 
+impl FromStr for ColorScheme {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "default" => Ok(ColorScheme::Default),
+            "gruvbox" => Ok(ColorScheme::Gruvbox),
+            "nord" => Ok(ColorScheme::Nord),
+            "catppuccin" => Ok(ColorScheme::Catppuccin),
+            "dracula" => Ok(ColorScheme::Dracula),
+            _ => Err(format!("Unknown color scheme: {}", s)),
+        }
+    }
+}
+
 impl ColorScheme {
+    #[allow(dead_code)]
     pub fn all() -> Vec<ColorScheme> {
         vec![
             ColorScheme::Gruvbox,
@@ -381,6 +405,7 @@ impl ColorScheme {
         }
     }
 
+    #[allow(dead_code)]
     pub fn previous(&self) -> Self {
         match self {
             ColorScheme::Default => ColorScheme::Dracula,

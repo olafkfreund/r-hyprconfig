@@ -209,6 +209,10 @@ impl App {
             return self.handle_popup_key(key).await;
         }
 
+        if self.ui.show_help {
+            return self.handle_help_key(key).await;
+        }
+
         if self.ui.search_mode {
             return self.handle_search_key(key).await;
         }
@@ -236,6 +240,12 @@ impl App {
             KeyCode::Down => {
                 self.ui.scroll_down();
             }
+            KeyCode::PageUp => {
+                self.ui.prev_page();
+            }
+            KeyCode::PageDown => {
+                self.ui.next_page();
+            }
             KeyCode::Enter => {
                 self.ui.start_editing().await?;
             }
@@ -256,7 +266,7 @@ impl App {
                 // TODO: Insert/Add item functionality
             }
             KeyCode::Char('/') => {
-                self.ui.start_search();
+                self.ui.start_search_debounced();
             }
             KeyCode::Char('t') | KeyCode::Char('T') => {
                 let new_theme = self.ui.next_theme();
@@ -268,13 +278,14 @@ impl App {
                 self.ui.show_popup = true;
                 self.ui.popup_message = format!("Theme changed to: {}", self.config.theme);
             }
-            KeyCode::F(1) => {
-                // Show theme selection menu or help
-                self.ui.show_popup = true;
-                self.ui.popup_message = format!(
-                    "Current theme: {} (Press T to cycle themes)",
-                    self.config.theme
-                );
+            KeyCode::Char('e') | KeyCode::Char('E') => {
+                self.export_config().await;
+            }
+            KeyCode::Char('m') | KeyCode::Char('M') => {
+                self.import_config().await;
+            }
+            KeyCode::F(1) | KeyCode::Char('?') => {
+                self.ui.toggle_help();
             }
             _ => {}
         }
@@ -608,19 +619,47 @@ impl App {
         Ok(())
     }
 
+    async fn handle_help_key(&mut self, key: KeyCode) -> Result<()> {
+        match key {
+            KeyCode::Esc | KeyCode::F(1) | KeyCode::Char('?') => {
+                self.ui.toggle_help();
+            }
+            KeyCode::Up => {
+                self.ui.scroll_help_up();
+            }
+            KeyCode::Down => {
+                self.ui.scroll_help_down();
+            }
+            KeyCode::PageUp => {
+                self.ui.scroll_help_page_up();
+            }
+            KeyCode::PageDown => {
+                self.ui.scroll_help_page_down();
+            }
+            KeyCode::Home => {
+                self.ui.scroll_help_to_top();
+            }
+            KeyCode::End => {
+                self.ui.scroll_help_to_bottom();
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     async fn handle_search_key(&mut self, key: KeyCode) -> Result<()> {
         match key {
             KeyCode::Esc => {
-                self.ui.exit_search();
+                self.ui.cancel_search_debounced();
             }
             KeyCode::Enter => {
-                self.ui.exit_search();
+                self.ui.cancel_search_debounced();
             }
             KeyCode::Char(c) => {
-                self.ui.add_search_char(c);
+                self.ui.add_search_char_debounced(c);
             }
             KeyCode::Backspace => {
-                self.ui.remove_search_char();
+                self.ui.remove_search_char_debounced();
             }
             KeyCode::Left => {
                 self.ui.move_search_cursor_left();
@@ -640,7 +679,11 @@ impl App {
     }
 
     async fn tick(&mut self) {
-        // Update any time-based UI elements here
+        // Update debounced search if delay has passed
+        if self.ui.update_debounced_search() {
+            // Search query was updated, pagination may need to be recalculated
+            // This will be handled automatically in the next render cycle
+        }
     }
 
     async fn reload_config(&mut self) -> Result<()> {
@@ -723,5 +766,190 @@ impl App {
         }
 
         Ok(())
+    }
+
+    async fn export_config(&mut self) {
+        match self.export_config_to_file().await {
+            Ok(path) => {
+                self.ui.show_popup = true;
+                self.ui.popup_message = format!("Configuration exported to: {}", path);
+            }
+            Err(e) => {
+                self.ui.show_popup = true;
+                self.ui.popup_message = format!("Export failed: {}", e);
+            }
+        }
+    }
+
+    async fn import_config(&mut self) {
+        match self.import_config_from_file().await {
+            Ok(imported_count) => {
+                self.ui.show_popup = true;
+                self.ui.popup_message = format!("Imported {} configuration items successfully!", imported_count);
+            }
+            Err(e) => {
+                self.ui.show_popup = true;
+                self.ui.popup_message = format!("Import failed: {}", e);
+            }
+        }
+    }
+
+    async fn export_config_to_file(&mut self) -> Result<String> {
+        use std::fs;
+        use chrono::Utc;
+
+        // Create export directory if it doesn't exist
+        let config_dir = dirs::config_dir()
+            .ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?;
+        let export_dir = config_dir.join("r-hyprconfig").join("exports");
+        fs::create_dir_all(&export_dir)?;
+
+        // Generate timestamp for unique filename
+        let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
+        let filename = format!("hyprconfig_export_{}.toml", timestamp);
+        let export_path = export_dir.join(&filename);
+
+        // Collect all configuration data
+        let config_changes = self.ui.collect_all_config_changes();
+        let keybinds = self.ui.collect_keybinds();
+        let window_rules = self.ui.collect_window_rules();
+        let layer_rules = self.ui.collect_layer_rules();
+
+        // Create export data structure
+        let export_data = toml::Table::from_iter([
+            ("metadata".to_string(), toml::Value::Table(toml::Table::from_iter([
+                ("export_date".to_string(), toml::Value::String(Utc::now().to_rfc3339())),
+                ("version".to_string(), toml::Value::String("1.0".to_string())),
+                ("theme".to_string(), toml::Value::String(self.config.theme.to_string())),
+            ]))),
+            ("config_options".to_string(), toml::Value::Table(
+                config_changes.into_iter()
+                    .map(|(k, v)| (k, toml::Value::String(v)))
+                    .collect()
+            )),
+            ("keybinds".to_string(), toml::Value::Array(
+                keybinds.into_iter()
+                    .map(|kb| toml::Value::String(kb))
+                    .collect()
+            )),
+            ("window_rules".to_string(), toml::Value::Array(
+                window_rules.into_iter()
+                    .map(|rule| toml::Value::String(rule))
+                    .collect()
+            )),
+            ("layer_rules".to_string(), toml::Value::Array(
+                layer_rules.into_iter()
+                    .map(|rule| toml::Value::String(rule))
+                    .collect()
+            )),
+        ]);
+
+        // Write to file
+        let toml_content = toml::to_string_pretty(&export_data)?;
+        fs::write(&export_path, toml_content)?;
+
+        Ok(export_path.to_string_lossy().to_string())
+    }
+
+    async fn import_config_from_file(&mut self) -> Result<usize> {
+        use std::fs;
+
+        // Look for the most recent export file
+        let config_dir = dirs::config_dir()
+            .ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?;
+        let export_dir = config_dir.join("r-hyprconfig").join("exports");
+
+        if !export_dir.exists() {
+            return Err(anyhow::anyhow!("No export directory found. Please export a configuration first."));
+        }
+
+        // Find the most recent export file
+        let mut export_files: Vec<_> = fs::read_dir(&export_dir)?
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                entry.path().extension()
+                    .and_then(|ext| ext.to_str())
+                    .map(|ext| ext == "toml")
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        if export_files.is_empty() {
+            return Err(anyhow::anyhow!("No export files found in {:?}", export_dir));
+        }
+
+        // Sort by modification time (most recent first)
+        export_files.sort_by_key(|entry| {
+            entry.metadata()
+                .and_then(|m| m.modified())
+                .unwrap_or(std::time::UNIX_EPOCH)
+        });
+        export_files.reverse();
+
+        let latest_export = &export_files[0];
+        let export_path = latest_export.path();
+
+        // Read and parse the export file
+        let content = fs::read_to_string(&export_path)?;
+        let export_data: toml::Table = toml::from_str(&content)?;
+
+        let mut imported_count = 0;
+
+        // Import theme if present
+        if let Some(metadata) = export_data.get("metadata").and_then(|v| v.as_table()) {
+            if let Some(theme_str) = metadata.get("theme").and_then(|v| v.as_str()) {
+                if let Ok(theme) = theme_str.parse::<crate::theme::ColorScheme>() {
+                    self.config.theme = theme.clone();
+                    self.ui.set_theme(theme);
+                    let _ = self.config.save().await;
+                }
+            }
+        }
+
+        // Import configuration options
+        if let Some(config_options) = export_data.get("config_options").and_then(|v| v.as_table()) {
+            for (key, value) in config_options {
+                if let Some(value_str) = value.as_str() {
+                    // Update the UI config items
+                    self.ui.update_config_item_from_import(key, value_str);
+                    imported_count += 1;
+                }
+            }
+        }
+
+        // Import keybinds
+        if let Some(keybinds) = export_data.get("keybinds").and_then(|v| v.as_array()) {
+            for keybind in keybinds {
+                if let Some(kb_str) = keybind.as_str() {
+                    self.ui.add_imported_keybind(kb_str);
+                    imported_count += 1;
+                }
+            }
+        }
+
+        // Import window rules
+        if let Some(rules) = export_data.get("window_rules").and_then(|v| v.as_array()) {
+            for rule in rules {
+                if let Some(rule_str) = rule.as_str() {
+                    self.ui.add_imported_window_rule(rule_str);
+                    imported_count += 1;
+                }
+            }
+        }
+
+        // Import layer rules
+        if let Some(rules) = export_data.get("layer_rules").and_then(|v| v.as_array()) {
+            for rule in rules {
+                if let Some(rule_str) = rule.as_str() {
+                    self.ui.add_imported_layer_rule(rule_str);
+                    imported_count += 1;
+                }
+            }
+        }
+
+        // Refresh the UI to show imported data
+        self.ui.refresh_all_panels();
+
+        Ok(imported_count)
     }
 }

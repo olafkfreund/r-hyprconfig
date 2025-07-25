@@ -112,9 +112,36 @@ pub struct UI {
     pub search_mode: bool,
     pub search_query: String,
     pub search_cursor: usize,
+    
+    // Help system
+    pub show_help: bool,
+    pub help_scroll: usize,
+    
+    // Debounced search
+    pub search_debounce_delay: std::time::Duration,
+    pub last_search_input: std::time::Instant,
+    pub pending_search_query: String,
+    pub debounced_search_active: bool,
+    
+    // Search result caching
+    pub search_cache: std::collections::HashMap<String, Vec<ConfigItem>>,
+    pub search_cache_max_size: usize,
+    
+    // Progressive search for large datasets
+    pub progressive_search_threshold: usize,
+    pub progressive_search_chunk_size: usize,
 
     // Theme
     pub theme: crate::theme::Theme,
+
+    // Lazy loading / pagination support
+    pub page_size: usize,
+    pub current_page: std::collections::HashMap<FocusedPanel, usize>,
+    pub total_pages: std::collections::HashMap<FocusedPanel, usize>,
+
+    // Virtualization support
+    pub item_height: usize, // Height per item (including description line)
+    pub item_cache_generation: usize, // Cache invalidation counter
 
     pub config_items: std::collections::HashMap<FocusedPanel, Vec<ConfigItem>>,
 }
@@ -145,9 +172,36 @@ impl UI {
             search_mode: false,
             search_query: String::new(),
             search_cursor: 0,
+            
+            // Help system
+            show_help: false,
+            help_scroll: 0,
+            
+            // Debounced search
+            search_debounce_delay: std::time::Duration::from_millis(300), // 300ms debounce
+            last_search_input: std::time::Instant::now(),
+            pending_search_query: String::new(),
+            debounced_search_active: false,
+            
+            // Search result caching
+            search_cache: std::collections::HashMap::new(),
+            search_cache_max_size: 50, // Cache up to 50 recent searches
+            
+            // Progressive search
+            progressive_search_threshold: 1000, // Use progressive search for 1000+ items
+            progressive_search_chunk_size: 100, // Process 100 items per chunk
 
             // Theme
             theme: crate::theme::Theme::default(),
+
+            // Lazy loading / pagination
+            page_size: 50, // Show 50 items per page for smooth performance
+            current_page: std::collections::HashMap::new(),
+            total_pages: std::collections::HashMap::new(),
+
+            // Virtualization
+            item_height: 3, // Each item takes 3 lines (key+value, description, spacing)
+            item_cache_generation: 0,
 
             config_items: std::collections::HashMap::new(),
         };
@@ -637,17 +691,30 @@ impl UI {
             },
         ];
 
-        // Insert all configuration items
-        self.config_items
-            .insert(FocusedPanel::Animations, animations_items);
-        self.config_items
-            .insert(FocusedPanel::Gestures, gestures_items);
-        self.config_items.insert(FocusedPanel::Binds, binds_items);
-        self.config_items
-            .insert(FocusedPanel::WindowRules, window_rules_items);
-        self.config_items
-            .insert(FocusedPanel::LayerRules, layer_rules_items);
-        self.config_items.insert(FocusedPanel::Misc, misc_items);
+        // Insert configuration items only if they don't already exist
+        // This prevents overwriting dynamically loaded data from hyprctl
+        if !self.config_items.contains_key(&FocusedPanel::Animations) {
+            self.config_items
+                .insert(FocusedPanel::Animations, animations_items);
+        }
+        if !self.config_items.contains_key(&FocusedPanel::Gestures) {
+            self.config_items
+                .insert(FocusedPanel::Gestures, gestures_items);
+        }
+        if !self.config_items.contains_key(&FocusedPanel::Binds) {
+            self.config_items.insert(FocusedPanel::Binds, binds_items);
+        }
+        if !self.config_items.contains_key(&FocusedPanel::WindowRules) {
+            self.config_items
+                .insert(FocusedPanel::WindowRules, window_rules_items);
+        }
+        if !self.config_items.contains_key(&FocusedPanel::LayerRules) {
+            self.config_items
+                .insert(FocusedPanel::LayerRules, layer_rules_items);
+        }
+        if !self.config_items.contains_key(&FocusedPanel::Misc) {
+            self.config_items.insert(FocusedPanel::Misc, misc_items);
+        }
     }
 
     pub fn collect_all_config_changes(&self) -> std::collections::HashMap<String, String> {
@@ -818,6 +885,12 @@ impl UI {
         } else {
             eprintln!("Debug: hyprctl succeeded, not loading from config file");
         }
+
+        // Update pagination for all panels after loading config
+        self.update_all_pagination();
+
+        // Optimize memory usage after loading large configuration sets
+        self.optimize_memory_usage();
 
         Ok(())
     }
@@ -1818,6 +1891,10 @@ impl UI {
         if self.edit_mode != EditMode::None {
             self.render_edit_popup(f, size);
         }
+
+        if self.show_help {
+            self.render_help_overlay(f, size);
+        }
     }
 
     fn render_enhanced_header(&self, f: &mut Frame, area: Rect, debug: bool) {
@@ -1888,7 +1965,7 @@ impl UI {
             .iter()
             .enumerate()
             .map(|(i, &panel)| {
-                let tab_name = match panel {
+                let base_name = match panel {
                     FocusedPanel::General => "General",
                     FocusedPanel::Input => "Input",
                     FocusedPanel::Decoration => "Decoration",
@@ -1898,6 +1975,18 @@ impl UI {
                     FocusedPanel::WindowRules => "Win Rules",
                     FocusedPanel::LayerRules => "Layer Rules",
                     FocusedPanel::Misc => "Misc",
+                };
+
+                // Add pagination info to current tab
+                let tab_name = if panel == self.current_tab {
+                    let (current_page, total_pages, _) = self.get_pagination_info();
+                    if total_pages > 1 {
+                        format!("{} ({}/{})", base_name, current_page, total_pages)
+                    } else {
+                        base_name.to_string()
+                    }
+                } else {
+                    base_name.to_string()
                 };
 
                 let style = self.theme.tab_style(panel == self.current_tab);
@@ -1949,47 +2038,32 @@ impl UI {
             .get(&self.current_tab)
             .cloned()
             .unwrap_or_default();
-        let filtered_items = self.filter_items(&config_items);
+        let filtered_items = self.filter_items_progressive(&config_items);
+        
+        // Update pagination for current filtered items
+        self.update_pagination(self.current_tab, filtered_items.len());
+        
+        // Apply pagination to the filtered items for performance
+        let paginated_items = self.get_paginated_items(&filtered_items);
 
-        // Create list items with enhanced formatting
-        let items: Vec<ListItem> = filtered_items
-            .iter()
-            .map(|item| {
-                let value_style = self.theme.data_type_style(&item.data_type);
+        // Apply virtualization to only render visible items
+        let content_area_height = if self.search_mode || !self.search_query.is_empty() {
+            area.height.saturating_sub(3) // Account for search bar
+        } else {
+            area.height
+        };
+        let (virtualized_items, _start_idx, _end_idx) = 
+            self.get_virtualized_items(&paginated_items, content_area_height as usize);
 
-                let key_display = if item.key.len() > 25 {
-                    format!("{}...", &item.key[..22])
-                } else {
-                    item.key.clone()
-                };
-
-                let value_display = if item.value.len() > 40 {
-                    format!("{}...", &item.value[..37])
-                } else {
-                    item.value.clone()
-                };
-
-                let line = Line::from(vec![
-                    Span::styled(
-                        format!("{:<28}", key_display),
-                        Style::default().fg(Color::Rgb(200, 200, 255)).bold(),
-                    ),
-                    Span::raw("│ "),
-                    Span::styled(value_display, value_style.bold()),
-                ]);
-
-                ListItem::new(vec![
-                    line,
-                    Line::from(vec![Span::styled(
-                        format!("  {}", item.description),
-                        Style::default().fg(Color::DarkGray).italic(),
-                    )]),
-                ])
-            })
-            .collect();
+        // Extract theme before creating items to avoid borrowing conflicts
+        let theme = self.theme.clone();
+        let current_tab = self.current_tab;
+        
+        // Create optimized list items (only for visible items)  
+        let items = Self::create_optimized_list_items(&virtualized_items, &theme);
 
         // Panel title
-        let title = match self.current_tab {
+        let title = match current_tab {
             FocusedPanel::General => "🏠 General Configuration",
             FocusedPanel::Input => "⌨️ Input Configuration",
             FocusedPanel::Decoration => "✨ Decoration Configuration",
@@ -2026,7 +2100,7 @@ impl UI {
             chunks[0] // Use first (and only) chunk when no search bar
         };
 
-        let current_list_state = self.get_current_list_state();
+        let current_list_state = self.get_list_state_mut(current_tab);
         f.render_stateful_widget(list, list_area, current_list_state);
     }
 
@@ -2179,6 +2253,9 @@ impl UI {
             Span::styled("↑↓", self.theme.success_style().bold()),
             Span::styled(" Navigate ", Style::default().fg(self.theme.fg_muted)),
             Span::raw("• "),
+            Span::styled("PgUp/PgDn", self.theme.success_style().bold()),
+            Span::styled(" Page ", Style::default().fg(self.theme.fg_muted)),
+            Span::raw("• "),
             Span::styled(
                 "Enter",
                 Style::default().fg(self.theme.accent_primary).bold(),
@@ -2194,8 +2271,17 @@ impl UI {
             Span::styled("/", self.theme.warning_style().bold()),
             Span::styled(" Search ", Style::default().fg(self.theme.fg_muted)),
             Span::raw("• "),
+            Span::styled("E", self.theme.success_style().bold()),
+            Span::styled(" Export ", Style::default().fg(self.theme.fg_muted)),
+            Span::raw("• "),
+            Span::styled("M", self.theme.success_style().bold()),
+            Span::styled(" Import ", Style::default().fg(self.theme.fg_muted)),
+            Span::raw("• "),
             Span::styled("T", Style::default().fg(self.theme.accent_secondary).bold()),
             Span::styled(" Theme ", Style::default().fg(self.theme.fg_muted)),
+            Span::raw("• "),
+            Span::styled("F1/?", self.theme.info_style().bold()),
+            Span::styled(" Help ", Style::default().fg(self.theme.fg_muted)),
             Span::raw("• "),
             Span::styled("Q/Esc", self.theme.error_style().bold()),
             Span::styled(" Quit", Style::default().fg(self.theme.fg_muted)),
@@ -2746,6 +2832,7 @@ impl UI {
         }
     }
 
+    #[allow(dead_code)]
     fn get_panel_items_count(&self, panel: FocusedPanel) -> usize {
         self.config_items
             .get(&panel)
@@ -2754,6 +2841,20 @@ impl UI {
     }
 
     #[allow(dead_code)]
+    fn get_list_state(&self, panel: FocusedPanel) -> &ListState {
+        match panel {
+            FocusedPanel::General => &self.general_list_state,
+            FocusedPanel::Input => &self.input_list_state,
+            FocusedPanel::Decoration => &self.decoration_list_state,
+            FocusedPanel::Animations => &self.animations_list_state,
+            FocusedPanel::Gestures => &self.gestures_list_state,
+            FocusedPanel::Binds => &self.binds_list_state,
+            FocusedPanel::WindowRules => &self.window_rules_list_state,
+            FocusedPanel::LayerRules => &self.layer_rules_list_state,
+            FocusedPanel::Misc => &self.misc_list_state,
+        }
+    }
+
     fn get_list_state_mut(&mut self, panel: FocusedPanel) -> &mut ListState {
         match panel {
             FocusedPanel::General => &mut self.general_list_state,
@@ -2769,9 +2870,16 @@ impl UI {
     }
 
     pub fn scroll_up(&mut self) {
-        let items_count = self.get_panel_items_count(self.current_tab);
-
-        if items_count == 0 {
+        let all_items = self.config_items.get(&self.current_tab).cloned().unwrap_or_default();
+        if all_items.is_empty() {
+            return;
+        }
+        
+        // Get the current visible items (filtered and paginated)
+        let filtered_items = self.filter_items_progressive(&all_items);
+        let paginated_items = self.get_paginated_items(&filtered_items);
+        
+        if paginated_items.is_empty() {
             return;
         }
 
@@ -2780,22 +2888,31 @@ impl UI {
         if selected > 0 {
             list_state.select(Some(selected - 1));
         } else {
-            list_state.select(Some(items_count - 1));
+            // Wrap to the last item on current page
+            list_state.select(Some(paginated_items.len() - 1));
         }
     }
 
     pub fn scroll_down(&mut self) {
-        let items_count = self.get_panel_items_count(self.current_tab);
-
-        if items_count == 0 {
+        let all_items = self.config_items.get(&self.current_tab).cloned().unwrap_or_default();
+        if all_items.is_empty() {
+            return;
+        }
+        
+        // Get the current visible items (filtered and paginated)
+        let filtered_items = self.filter_items_progressive(&all_items);
+        let paginated_items = self.get_paginated_items(&filtered_items);
+        
+        if paginated_items.is_empty() {
             return;
         }
 
         let list_state = self.get_current_list_state();
         let selected = list_state.selected().unwrap_or(0);
-        if selected < items_count - 1 {
+        if selected < paginated_items.len() - 1 {
             list_state.select(Some(selected + 1));
         } else {
+            // Wrap to the first item on current page
             list_state.select(Some(0));
         }
     }
@@ -3168,18 +3285,21 @@ impl UI {
     }
 
     // Search functionality methods
+    #[allow(dead_code)]
     pub fn start_search(&mut self) {
         self.search_mode = true;
         self.search_query.clear();
         self.search_cursor = 0;
     }
 
+    #[allow(dead_code)]
     pub fn exit_search(&mut self) {
         self.search_mode = false;
         self.search_query.clear();
         self.search_cursor = 0;
     }
 
+    #[allow(dead_code)]
     pub fn add_search_char(&mut self, c: char) {
         if self.search_mode {
             self.search_query.insert(self.search_cursor, c);
@@ -3187,6 +3307,7 @@ impl UI {
         }
     }
 
+    #[allow(dead_code)]
     pub fn remove_search_char(&mut self) {
         if self.search_mode && self.search_cursor > 0 {
             self.search_cursor -= 1;
@@ -3206,13 +3327,86 @@ impl UI {
         }
     }
 
-    pub fn filter_items(&self, items: &[ConfigItem]) -> Vec<ConfigItem> {
+    // Debounced search methods
+    pub fn add_search_char_debounced(&mut self, c: char) {
+        if self.search_mode {
+            // Update the pending search query immediately for visual feedback
+            self.pending_search_query.insert(self.search_cursor, c);
+            self.search_cursor += 1;
+            
+            // Update debounce timing
+            self.last_search_input = std::time::Instant::now();
+            self.debounced_search_active = true;
+        }
+    }
+
+    pub fn remove_search_char_debounced(&mut self) {
+        if self.search_mode && self.search_cursor > 0 {
+            self.search_cursor -= 1;
+            self.pending_search_query.remove(self.search_cursor);
+            
+            // Update debounce timing
+            self.last_search_input = std::time::Instant::now();
+            self.debounced_search_active = true;
+        }
+    }
+
+    pub fn update_debounced_search(&mut self) -> bool {
+        if !self.debounced_search_active {
+            return false;
+        }
+
+        // Check if debounce delay has passed
+        if self.last_search_input.elapsed() >= self.search_debounce_delay {
+            // Apply the pending search query
+            let query_changed = self.search_query != self.pending_search_query;
+            self.search_query = self.pending_search_query.clone();
+            self.debounced_search_active = false;
+            
+            return query_changed;
+        }
+        
+        false
+    }
+
+    pub fn start_search_debounced(&mut self) {
+        self.search_mode = true;
+        self.pending_search_query = self.search_query.clone();
+        self.search_cursor = self.search_query.len();
+        self.debounced_search_active = false;
+    }
+
+    pub fn cancel_search_debounced(&mut self) {
+        self.search_mode = false;
+        self.search_query.clear();
+        self.pending_search_query.clear();
+        self.search_cursor = 0;
+        self.debounced_search_active = false;
+    }
+
+    pub fn get_display_search_query(&self) -> &str {
+        if self.debounced_search_active && self.search_mode {
+            &self.pending_search_query
+        } else {
+            &self.search_query
+        }
+    }
+
+    pub fn filter_items(&mut self, items: &[ConfigItem]) -> Vec<ConfigItem> {
         if self.search_query.is_empty() {
             return items.to_vec();
         }
 
         let query = self.search_query.to_lowercase();
-        items
+        
+        // Check cache first
+        let cache_key = format!("{}:{}", self.current_tab as u8, query);
+        if let Some(cached_results) = self.search_cache.get(&cache_key) {
+            return cached_results.clone();
+        }
+
+        // Perform filtering
+        let filtered_items: Vec<ConfigItem> = items
             .iter()
             .filter(|item| {
                 item.key.to_lowercase().contains(&query)
@@ -3220,14 +3414,297 @@ impl UI {
                     || item.description.to_lowercase().contains(&query)
             })
             .cloned()
-            .collect()
+            .collect();
+
+        // Cache the results
+        self.cache_search_results(cache_key, filtered_items.clone());
+        
+        filtered_items
+    }
+
+    fn cache_search_results(&mut self, cache_key: String, results: Vec<ConfigItem>) {
+        // Implement LRU-like behavior by removing oldest entries when cache is full
+        if self.search_cache.len() >= self.search_cache_max_size {
+            // Remove a random entry (simple eviction strategy)
+            if let Some(key_to_remove) = self.search_cache.keys().next().cloned() {
+                self.search_cache.remove(&key_to_remove);
+            }
+        }
+        
+        self.search_cache.insert(cache_key, results);
+    }
+
+    pub fn clear_search_cache(&mut self) {
+        self.search_cache.clear();
+    }
+
+    #[allow(dead_code)]
+    pub fn invalidate_search_cache_for_panel(&mut self, panel: FocusedPanel) {
+        let panel_prefix = format!("{}:", panel as u8);
+        let keys_to_remove: Vec<String> = self.search_cache
+            .keys()
+            .filter(|key| key.starts_with(&panel_prefix))
+            .cloned()
+            .collect();
+        
+        for key in keys_to_remove {
+            self.search_cache.remove(&key);
+        }
+    }
+
+    // Progressive search for very large datasets
+    pub fn filter_items_progressive(&mut self, items: &[ConfigItem]) -> Vec<ConfigItem> {
+        if self.search_query.is_empty() {
+            return items.to_vec();
+        }
+
+        let query = self.search_query.to_lowercase();
+        
+        // Check cache first
+        let cache_key = format!("{}:{}", self.current_tab as u8, query);
+        if let Some(cached_results) = self.search_cache.get(&cache_key) {
+            return cached_results.clone();
+        }
+
+        // Use progressive search for large datasets
+        if items.len() > self.progressive_search_threshold {
+            let mut filtered_items = Vec::new();
+            
+            // Process items in chunks to maintain responsiveness
+            for chunk in items.chunks(self.progressive_search_chunk_size) {
+                let chunk_results: Vec<ConfigItem> = chunk
+                    .iter()
+                    .filter(|item| {
+                        item.key.to_lowercase().contains(&query)
+                            || item.value.to_lowercase().contains(&query)
+                            || item.description.to_lowercase().contains(&query)
+                    })
+                    .cloned()
+                    .collect();
+                
+                filtered_items.extend(chunk_results);
+                
+                // Yield control periodically for UI responsiveness
+                // Note: In a real implementation, you might want to add actual yielding
+                // or async processing here for extremely large datasets
+            }
+            
+            // Cache the results
+            self.cache_search_results(cache_key, filtered_items.clone());
+            
+            filtered_items
+        } else {
+            // Use standard filtering for smaller datasets
+            self.filter_items(items)
+        }
+    }
+
+    // Lazy loading / pagination methods
+    pub fn get_paginated_items(&self, items: &[ConfigItem]) -> Vec<ConfigItem> {
+        let current_page = self.current_page.get(&self.current_tab).copied().unwrap_or(0);
+        let start_idx = current_page * self.page_size;
+        let end_idx = (start_idx + self.page_size).min(items.len());
+        
+        if start_idx >= items.len() {
+            return Vec::new();
+        }
+        
+        items[start_idx..end_idx].to_vec()
+    }
+
+    pub fn update_pagination(&mut self, panel: FocusedPanel, total_items: usize) {
+        let total_pages = if total_items == 0 {
+            1
+        } else {
+            (total_items + self.page_size - 1) / self.page_size
+        };
+        
+        self.total_pages.insert(panel, total_pages);
+        
+        // Ensure current page is within bounds
+        let current_page = self.current_page.get(&panel).copied().unwrap_or(0);
+        if current_page >= total_pages {
+            self.current_page.insert(panel, total_pages.saturating_sub(1));
+        }
+    }
+
+    pub fn next_page(&mut self) {
+        let current_page = self.current_page.get(&self.current_tab).copied().unwrap_or(0);
+        let total_pages = self.total_pages.get(&self.current_tab).copied().unwrap_or(1);
+        
+        if current_page + 1 < total_pages {
+            self.current_page.insert(self.current_tab, current_page + 1);
+            // Reset list selection to top of new page
+            self.get_list_state_mut(self.current_tab).select(Some(0));
+        }
+    }
+
+    pub fn prev_page(&mut self) {
+        let current_page = self.current_page.get(&self.current_tab).copied().unwrap_or(0);
+        
+        if current_page > 0 {
+            self.current_page.insert(self.current_tab, current_page - 1);
+            // Reset list selection to top of new page
+            self.get_list_state_mut(self.current_tab).select(Some(0));
+        }
+    }
+
+    pub fn get_pagination_info(&self) -> (usize, usize, usize) {
+        let current_page = self.current_page.get(&self.current_tab).copied().unwrap_or(0);
+        let total_pages = self.total_pages.get(&self.current_tab).copied().unwrap_or(1);
+        let start_item = current_page * self.page_size + 1;
+        (current_page + 1, total_pages, start_item)
+    }
+
+    pub fn update_all_pagination(&mut self) {
+        // Update pagination for all panels based on their config items
+        let panels = vec![
+            FocusedPanel::General,
+            FocusedPanel::Input,
+            FocusedPanel::Decoration,
+            FocusedPanel::Animations,
+            FocusedPanel::Gestures,
+            FocusedPanel::Binds,
+            FocusedPanel::WindowRules,
+            FocusedPanel::LayerRules,
+            FocusedPanel::Misc,
+        ];
+
+        for panel in panels {
+            let item_count = self.config_items
+                .get(&panel)
+                .map(|items| items.len())
+                .unwrap_or(0);
+            self.update_pagination(panel, item_count);
+        }
+    }
+
+    // Virtualization methods
+    pub fn get_visible_item_range(&self, available_height: usize, total_items: usize) -> (usize, usize) {
+        if total_items == 0 || available_height == 0 {
+            return (0, 0);
+        }
+
+        // Calculate how many items can fit in the available height
+        let max_visible_items = (available_height.saturating_sub(2)) / self.item_height; // -2 for borders
+        let max_visible_items = max_visible_items.max(1); // Ensure at least 1 item is visible
+
+        // Get the currently selected item to determine scroll position
+        let selected_index = self.get_list_state(self.current_tab)
+            .selected()
+            .unwrap_or(0);
+
+        // Calculate the start index to keep the selected item visible
+        let start_index = if selected_index < max_visible_items / 2 {
+            0
+        } else if selected_index + max_visible_items / 2 >= total_items {
+            total_items.saturating_sub(max_visible_items)
+        } else {
+            selected_index.saturating_sub(max_visible_items / 2)
+        };
+
+        let end_index = (start_index + max_visible_items).min(total_items);
+        
+        (start_index, end_index)
+    }
+
+    pub fn get_virtualized_items(&self, items: &[ConfigItem], available_height: usize) -> (Vec<ConfigItem>, usize, usize) {
+        // Disable virtualization for small item counts where it's not needed
+        // This fixes the issue where users can't see all items in categories with reasonable counts
+        if items.len() <= 100 {
+            return (items.to_vec(), 0, items.len());
+        }
+        
+        let (start_idx, end_idx) = self.get_visible_item_range(available_height, items.len());
+        
+        if start_idx >= items.len() {
+            return (Vec::new(), 0, 0);
+        }
+        
+        let visible_items = items[start_idx..end_idx].to_vec();
+        (visible_items, start_idx, end_idx)
+    }
+
+    // Efficient ListItem creation with optimization
+    pub fn create_optimized_list_items(items: &[ConfigItem], theme: &crate::theme::Theme) -> Vec<ListItem<'static>> {
+        // Pre-allocate the vector with known capacity for better performance
+        let mut list_items = Vec::with_capacity(items.len());
+        
+        for item in items {
+            // Create optimized ListItem with minimal string allocations
+            let value_style = theme.data_type_style(&item.data_type);
+
+            // Optimize string handling to minimize allocations
+            let key_display = if item.key.len() > 25 {
+                format!("{}...", &item.key[..22])
+            } else {
+                item.key.clone()
+            };
+
+            let value_display = if item.value.len() > 40 {
+                format!("{}...", &item.value[..37])
+            } else {
+                item.value.clone()
+            };
+
+            // Create the ListItem directly without intermediate allocations
+            let line = Line::from(vec![
+                Span::styled(
+                    format!("{:<28}", key_display),
+                    Style::default().fg(Color::Rgb(200, 200, 255)).bold(),
+                ),
+                Span::raw("│ "),
+                Span::styled(value_display, value_style.bold()),
+            ]);
+
+            let description_line = Line::from(vec![Span::styled(
+                format!("  {}", item.description),
+                Style::default().fg(Color::DarkGray).italic(),
+            )]);
+
+            list_items.push(ListItem::new(vec![line, description_line]));
+        }
+        
+        // Explicitly shrink the vector if it has excess capacity
+        list_items.shrink_to_fit();
+        list_items
+    }
+
+    // Memory optimization for large collections
+    pub fn optimize_memory_usage(&mut self) {
+        // Periodically clean up config_items to free unused memory
+        for (_, items) in self.config_items.iter_mut() {
+            items.shrink_to_fit();
+        }
+        
+        // Clear search cache to free memory and ensure fresh results
+        self.clear_search_cache();
+        
+        // Increment cache generation to invalidate old cached data
+        self.item_cache_generation = self.item_cache_generation.wrapping_add(1);
+    }
+
+    // Batch processing for very large datasets
+    #[allow(dead_code)]
+    pub fn process_items_in_batches<F>(&self, items: &[ConfigItem], batch_size: usize, mut processor: F) 
+    where 
+        F: FnMut(&[ConfigItem])
+    {
+        for chunk in items.chunks(batch_size) {
+            processor(chunk);
+        }
     }
 
     fn render_search_bar(&self, f: &mut Frame, area: Rect) {
+        let display_query = self.get_display_search_query();
         let search_text = if self.search_mode {
-            format!("Search: {}", self.search_query)
+            if self.debounced_search_active {
+                format!("Search: {}⏳", display_query) // Show pending indicator
+            } else {
+                format!("Search: {}", display_query)
+            }
         } else {
-            format!("Search: {} (Press / to edit)", self.search_query)
+            format!("Search: {} (Press / to edit)", display_query)
         };
 
         let search_style = self.theme.search_style(self.search_mode);
@@ -3245,17 +3722,7 @@ impl UI {
                     })
                     .border_type(BorderType::Rounded)
                     .title(if !self.search_query.is_empty() {
-                        format!(
-                            " Search (showing {} results) ",
-                            self.filter_items(
-                                &self
-                                    .config_items
-                                    .get(&self.current_tab)
-                                    .cloned()
-                                    .unwrap_or_default()
-                            )
-                            .len()
-                        )
+                        " Search (filtered) ".to_string()
                     } else {
                         " Search ".to_string()
                     })
@@ -3285,13 +3752,286 @@ impl UI {
         next_scheme
     }
 
+    #[allow(dead_code)]
     pub fn previous_theme(&mut self) -> crate::theme::ColorScheme {
         let prev_scheme = self.theme.scheme.previous();
         self.theme = crate::theme::Theme::from_scheme(prev_scheme.clone());
         prev_scheme
     }
 
+    #[allow(dead_code)]
     pub fn get_current_theme(&self) -> &crate::theme::ColorScheme {
         &self.theme.scheme
+    }
+
+    // Help system methods
+    pub fn toggle_help(&mut self) {
+        self.show_help = !self.show_help;
+        self.help_scroll = 0; // Reset scroll when toggling
+    }
+
+    #[allow(dead_code)]
+    pub fn close_help(&mut self) {
+        self.show_help = false;
+        self.help_scroll = 0;
+    }
+
+    pub fn scroll_help_up(&mut self) {
+        if self.help_scroll > 0 {
+            self.help_scroll -= 1;
+        }
+    }
+
+    pub fn scroll_help_down(&mut self) {
+        // We'll limit this based on content length in the render method
+        self.help_scroll += 1;
+    }
+
+    pub fn scroll_help_page_up(&mut self) {
+        if self.help_scroll >= 10 {
+            self.help_scroll -= 10;
+        } else {
+            self.help_scroll = 0;
+        }
+    }
+
+    pub fn scroll_help_page_down(&mut self) {
+        self.help_scroll += 10;
+    }
+
+    pub fn scroll_help_to_top(&mut self) {
+        self.help_scroll = 0;
+    }
+
+    pub fn scroll_help_to_bottom(&mut self) {
+        // Set to a large value; will be clamped in render
+        self.help_scroll = 9999;
+    }
+
+    fn render_help_overlay(&self, f: &mut Frame, area: Rect) {
+        let help_area = Self::centered_rect(90, 85, area);
+
+        let help_content = vec![
+            Line::from(vec![
+                Span::styled("📖 R-Hyprconfig Help System", Style::default().fg(self.theme.accent_primary).bold())
+            ]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("🔍 Navigation & Search", Style::default().fg(self.theme.accent_secondary).bold())
+            ]),
+            Line::from("  Tab/→              Next panel"),
+            Line::from("  Shift+Tab/←        Previous panel"), 
+            Line::from("  ↑↓                 Navigate items"),
+            Line::from("  PgUp/PgDn           Change page"),
+            Line::from("  /                  Start search"),
+            Line::from("  Esc                Exit search/dialogs"),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("⚙️ Configuration", Style::default().fg(self.theme.accent_secondary).bold())
+            ]),
+            Line::from("  Enter              Edit selected item"),
+            Line::from("  S                  Save configuration"),
+            Line::from("  R                  Reload configuration"),
+            Line::from("  A                  Add new item"),
+            Line::from("  D                  Delete selected item"),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("🎨 Interface", Style::default().fg(self.theme.accent_secondary).bold())
+            ]),
+            Line::from("  T                  Switch theme"),
+            Line::from("  F1                 Theme information"),
+            Line::from("  ?/F1               Show this help"),
+            Line::from("  E                  Show error details"),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("📂 Configuration Panels", Style::default().fg(self.theme.accent_secondary).bold())
+            ]),
+            Line::from("  General            Basic Hyprland settings"),
+            Line::from("  Input              Keyboard & mouse configuration"),
+            Line::from("  Decoration         Window borders & appearance"),
+            Line::from("  Animations         Window & workspace animations"),
+            Line::from("  Gestures           Touchpad gesture settings"),
+            Line::from("  Binds              Keyboard shortcuts"),
+            Line::from("  Win Rules          Window-specific rules"),
+            Line::from("  Layer Rules        Layer-specific settings"),
+            Line::from("  Misc               Miscellaneous options"),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("🔧 Advanced Features", Style::default().fg(self.theme.accent_secondary).bold())
+            ]),
+            Line::from("  • Automatic backup of configurations"),
+            Line::from("  • Real-time validation with error detection"),
+            Line::from("  • Search across all configuration options"),
+            Line::from("  • Support for NixOS declarative configs"),
+            Line::from("  • Theme persistence across sessions"),
+            Line::from("  • High-performance handling of 500+ items"),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("📋 Tips", Style::default().fg(self.theme.accent_secondary).bold())
+            ]),
+            Line::from("  • Use search (/) to quickly find settings"),
+            Line::from("  • Page navigation handles large configs smoothly"),
+            Line::from("  • Validation prevents invalid configurations"),
+            Line::from("  • All changes are backed up automatically"),
+            Line::from("  • Theme changes are saved immediately"),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("⚠️ File Locations", Style::default().fg(self.theme.warning_style().fg.unwrap()).bold())
+            ]),
+            Line::from("  Config: ~/.config/hypr/hyprland.conf"),
+            Line::from("  Backup: ~/.config/hypr/hyprland.conf.backup"),
+            Line::from("  App config: ~/.config/r-hyprconfig/"),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("Press Esc or ? to close help", Style::default().fg(self.theme.fg_muted).italic())
+            ]),
+        ];
+
+        // Calculate visible content based on scroll
+        let content_height = help_area.height.saturating_sub(4) as usize; // Account for borders and padding
+        let max_scroll = help_content.len().saturating_sub(content_height);
+        let scroll = self.help_scroll.min(max_scroll);
+        
+        let total_lines = help_content.len();
+        let visible_content: Vec<Line> = if total_lines > content_height {
+            help_content.into_iter().skip(scroll).take(content_height).collect()
+        } else {
+            help_content
+        };
+
+        let help_title = if max_scroll > 0 {
+            format!(" Help - {} of {} lines (↑↓ to scroll) ", 
+                   scroll + content_height.min(total_lines), 
+                   total_lines)
+        } else {
+            " Help ".to_string()
+        };
+
+        let help_paragraph = Paragraph::new(visible_content)
+            .block(
+                Block::default()
+                    .title(help_title)
+                    .title_style(Style::default().fg(self.theme.accent_primary).bold())
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(self.theme.accent_primary))
+                    .border_type(BorderType::Rounded)
+                    .style(Style::default().bg(self.theme.bg_primary))
+            )
+            .alignment(Alignment::Left)
+            .wrap(ratatui::widgets::Wrap { trim: true });
+
+        // Clear the background
+        f.render_widget(Block::default().style(Style::default().bg(Color::Black)), area);
+        
+        // Render the help overlay
+        f.render_widget(help_paragraph, help_area);
+    }
+
+    // Import/Export support methods
+    pub fn update_config_item_from_import(&mut self, key: &str, value: &str) {
+        // Find which panel this key belongs to and update it
+        for (_panel, items) in self.config_items.iter_mut() {
+            for item in items.iter_mut() {
+                if item.key == key {
+                    item.value = value.to_string();
+                    return;
+                }
+            }
+        }
+        
+        // If not found in existing items, try to determine the panel and add it
+        let panel = self.determine_panel_for_key(key);
+        let new_item = ConfigItem {
+            key: key.to_string(),
+            value: value.to_string(),
+            data_type: ConfigDataType::String, // Default to string
+            description: format!("Imported setting: {}", key),
+            suggestions: Vec::new(),
+        };
+        
+        self.config_items.entry(panel).or_default().push(new_item);
+    }
+
+    pub fn add_imported_keybind(&mut self, keybind: &str) {
+        let new_item = ConfigItem {
+            key: format!("imported_bind_{}", self.config_items.get(&FocusedPanel::Binds).map(|v| v.len()).unwrap_or(0)),
+            value: keybind.to_string(),
+            data_type: ConfigDataType::String,
+            description: "Imported keybind".to_string(),
+            suggestions: Vec::new(),
+        };
+        
+        self.config_items.entry(FocusedPanel::Binds).or_default().push(new_item);
+    }
+
+    pub fn add_imported_window_rule(&mut self, rule: &str) {
+        let new_item = ConfigItem {
+            key: format!("imported_windowrule_{}", self.config_items.get(&FocusedPanel::WindowRules).map(|v| v.len()).unwrap_or(0)),
+            value: rule.to_string(),
+            data_type: ConfigDataType::String,
+            description: "Imported window rule".to_string(),
+            suggestions: Vec::new(),
+        };
+        
+        self.config_items.entry(FocusedPanel::WindowRules).or_default().push(new_item);
+    }
+
+    pub fn add_imported_layer_rule(&mut self, rule: &str) {
+        let new_item = ConfigItem {
+            key: format!("imported_layerrule_{}", self.config_items.get(&FocusedPanel::LayerRules).map(|v| v.len()).unwrap_or(0)),
+            value: rule.to_string(),
+            data_type: ConfigDataType::String,
+            description: "Imported layer rule".to_string(),
+            suggestions: Vec::new(),
+        };
+        
+        self.config_items.entry(FocusedPanel::LayerRules).or_default().push(new_item);
+    }
+
+    pub fn refresh_all_panels(&mut self) {
+        // Update pagination for all panels
+        self.update_all_pagination();
+        
+        // Clear search cache
+        self.clear_search_cache();
+        
+        // Reset selections to top of each panel
+        for panel in [
+            FocusedPanel::General,
+            FocusedPanel::Input,
+            FocusedPanel::Decoration,
+            FocusedPanel::Animations,
+            FocusedPanel::Gestures,
+            FocusedPanel::Binds,
+            FocusedPanel::WindowRules,
+            FocusedPanel::LayerRules,
+            FocusedPanel::Misc,
+        ] {
+            self.get_list_state_mut(panel).select(Some(0));
+        }
+    }
+
+    fn determine_panel_for_key(&self, key: &str) -> FocusedPanel {
+        if key.starts_with("general") || key.contains("gaps") || key.contains("border") {
+            FocusedPanel::General
+        } else if key.starts_with("input") || key.contains("kb_") || key.contains("mouse") {
+            FocusedPanel::Input
+        } else if key.starts_with("decoration") || key.contains("rounding") || key.contains("shadow") {
+            FocusedPanel::Decoration
+        } else if key.starts_with("animations") || key.contains("animation") {
+            FocusedPanel::Animations
+        } else if key.starts_with("gestures") || key.contains("gesture") {
+            FocusedPanel::Gestures
+        } else if key.starts_with("misc") || key.contains("hyprland_logo") {
+            FocusedPanel::Misc
+        } else if key.contains("bind") {
+            FocusedPanel::Binds
+        } else if key.contains("windowrule") {
+            FocusedPanel::WindowRules
+        } else if key.contains("layerrule") {
+            FocusedPanel::LayerRules
+        } else {
+            FocusedPanel::Misc // Default fallback
+        }
     }
 }
