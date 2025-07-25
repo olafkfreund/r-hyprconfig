@@ -20,7 +20,7 @@ pub enum DistributionType {
     Gentoo,
     Alpine,
     CentOS,
-    RHEL,
+    Rhel,
     Unknown(String),
 }
 
@@ -37,7 +37,7 @@ impl std::fmt::Display for DistributionType {
             DistributionType::Gentoo => write!(f, "Gentoo"),
             DistributionType::Alpine => write!(f, "Alpine Linux"),
             DistributionType::CentOS => write!(f, "CentOS"),
-            DistributionType::RHEL => write!(f, "Red Hat Enterprise Linux"),
+            DistributionType::Rhel => write!(f, "Red Hat Enterprise Linux"),
             DistributionType::Unknown(name) => write!(f, "Unknown ({})", name),
         }
     }
@@ -71,7 +71,7 @@ impl DistributionInfo {
                 DistributionType::Ubuntu => "ubuntu",
                 DistributionType::Arch => "arch",
                 DistributionType::Fedora => "fedora",
-                DistributionType::RHEL => "rhel",
+                DistributionType::Rhel => "rhel",
                 _ => return false,
             };
             
@@ -273,7 +273,7 @@ impl DistributionDetector {
             "gentoo" => DistributionType::Gentoo,
             "alpine" => DistributionType::Alpine,
             "centos" => DistributionType::CentOS,
-            "rhel" => DistributionType::RHEL,
+            "rhel" => DistributionType::Rhel,
             _ => {
                 // Check ID_LIKE for derived distributions
                 // Priority order: more specific distributions first
@@ -291,7 +291,7 @@ impl DistributionDetector {
                             "debian" => return DistributionType::Debian,
                             "arch" => return DistributionType::Arch,
                             "fedora" => return DistributionType::Fedora,
-                            "rhel" => return DistributionType::RHEL,
+                            "rhel" => return DistributionType::Rhel,
                             _ => {}
                         }
                     }

@@ -475,11 +475,7 @@ impl NixConfigGenerator {
 
     fn convert_value_to_nix(&self, value: &str) -> Result<String> {
         // Handle different value types for Nix
-        if value == "true" || value == "false" {
-            Ok(value.to_string())
-        } else if value.parse::<i32>().is_ok() {
-            Ok(value.to_string())
-        } else if value.parse::<f32>().is_ok() {
+        if value == "true" || value == "false" || value.parse::<i32>().is_ok() || value.parse::<f32>().is_ok() {
             Ok(value.to_string())
         } else if value.starts_with("rgba(") || value.starts_with("rgb(") {
             Ok(format!("\"{}\"", value))
@@ -621,9 +617,8 @@ mod tests {
 
     #[test]
     fn test_nix_config_generator_creation() {
-        let generator = NixConfigGenerator::new();
+        let _generator = NixConfigGenerator::new();
         // Test that generator can be created without errors
-        assert!(true);
     }
 
     #[test]

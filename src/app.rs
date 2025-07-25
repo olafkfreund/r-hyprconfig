@@ -417,7 +417,7 @@ impl App {
             match key {
                 KeyCode::Char('y') | KeyCode::Char('Y') => {
                     // Confirm deletion
-                    let panel_clone = panel.clone();
+                    let panel_clone = *panel;
                     let key_clone = item_key.clone();
                     if self.ui.delete_item(&panel_clone, &key_clone) {
                         self.ui.show_popup = true;
@@ -2122,7 +2122,7 @@ impl App {
                     self.ui.show_popup = true;
                     self.ui.popup_message = format!("Delete Keybind: '{}' - Press 'Y' to confirm, any other key to cancel", value);
                     // Set a flag to handle deletion on next key press
-                    self.ui.pending_deletion = Some((self.ui.current_tab.clone(), key));
+                    self.ui.pending_deletion = Some((self.ui.current_tab, key));
                 }
             }
             crate::app::FocusedPanel::WindowRules => {
@@ -2131,7 +2131,7 @@ impl App {
                     let key = selected.key.clone();
                     self.ui.show_popup = true;
                     self.ui.popup_message = format!("Delete Window Rule: '{}' - Press 'Y' to confirm, any other key to cancel", value);
-                    self.ui.pending_deletion = Some((self.ui.current_tab.clone(), key));
+                    self.ui.pending_deletion = Some((self.ui.current_tab, key));
                 }
             }
             crate::app::FocusedPanel::LayerRules => {
@@ -2140,7 +2140,7 @@ impl App {
                     let key = selected.key.clone();
                     self.ui.show_popup = true;
                     self.ui.popup_message = format!("Delete Layer Rule: '{}' - Press 'Y' to confirm, any other key to cancel", value);
-                    self.ui.pending_deletion = Some((self.ui.current_tab.clone(), key));
+                    self.ui.pending_deletion = Some((self.ui.current_tab, key));
                 }
             }
             _ => {

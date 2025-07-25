@@ -5355,7 +5355,7 @@ impl UI {
         
         // Add the new item to the Binds panel
         self.config_items.entry(crate::app::FocusedPanel::Binds)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(empty_item);
             
         // Select the newly added item and start editing
@@ -5378,7 +5378,7 @@ impl UI {
         
         // Add the new item to the WindowRules panel
         self.config_items.entry(crate::app::FocusedPanel::WindowRules)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(empty_item);
             
         // Select the newly added item and start editing
@@ -5401,7 +5401,7 @@ impl UI {
         
         // Add the new item to the LayerRules panel
         self.config_items.entry(crate::app::FocusedPanel::LayerRules)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(empty_item);
             
         // Select the newly added item and start editing
