@@ -417,7 +417,7 @@
 <a href=#417 id=417 data-nosnippet>417</a>            <span class="kw">match </span>key {
 <a href=#418 id=418 data-nosnippet>418</a>                KeyCode::Char(<span class="string">'y'</span>) | KeyCode::Char(<span class="string">'Y'</span>) =&gt; {
 <a href=#419 id=419 data-nosnippet>419</a>                    <span class="comment">// Confirm deletion
-<a href=#420 id=420 data-nosnippet>420</a>                    </span><span class="kw">let </span>panel_clone = panel.clone();
+<a href=#420 id=420 data-nosnippet>420</a>                    </span><span class="kw">let </span>panel_clone = <span class="kw-2">*</span>panel;
 <a href=#421 id=421 data-nosnippet>421</a>                    <span class="kw">let </span>key_clone = item_key.clone();
 <a href=#422 id=422 data-nosnippet>422</a>                    <span class="kw">if </span><span class="self">self</span>.ui.delete_item(<span class="kw-2">&amp;</span>panel_clone, <span class="kw-2">&amp;</span>key_clone) {
 <a href=#423 id=423 data-nosnippet>423</a>                        <span class="self">self</span>.ui.show_popup = <span class="bool-val">true</span>;
@@ -2122,7 +2122,7 @@
 <a href=#2122 id=2122 data-nosnippet>2122</a>                    <span class="self">self</span>.ui.show_popup = <span class="bool-val">true</span>;
 <a href=#2123 id=2123 data-nosnippet>2123</a>                    <span class="self">self</span>.ui.popup_message = <span class="macro">format!</span>(<span class="string">"Delete Keybind: '{}' - Press 'Y' to confirm, any other key to cancel"</span>, value);
 <a href=#2124 id=2124 data-nosnippet>2124</a>                    <span class="comment">// Set a flag to handle deletion on next key press
-<a href=#2125 id=2125 data-nosnippet>2125</a>                    </span><span class="self">self</span>.ui.pending_deletion = <span class="prelude-val">Some</span>((<span class="self">self</span>.ui.current_tab.clone(), key));
+<a href=#2125 id=2125 data-nosnippet>2125</a>                    </span><span class="self">self</span>.ui.pending_deletion = <span class="prelude-val">Some</span>((<span class="self">self</span>.ui.current_tab, key));
 <a href=#2126 id=2126 data-nosnippet>2126</a>                }
 <a href=#2127 id=2127 data-nosnippet>2127</a>            }
 <a href=#2128 id=2128 data-nosnippet>2128</a>            <span class="kw">crate</span>::app::FocusedPanel::WindowRules =&gt; {
@@ -2131,7 +2131,7 @@
 <a href=#2131 id=2131 data-nosnippet>2131</a>                    <span class="kw">let </span>key = selected.key.clone();
 <a href=#2132 id=2132 data-nosnippet>2132</a>                    <span class="self">self</span>.ui.show_popup = <span class="bool-val">true</span>;
 <a href=#2133 id=2133 data-nosnippet>2133</a>                    <span class="self">self</span>.ui.popup_message = <span class="macro">format!</span>(<span class="string">"Delete Window Rule: '{}' - Press 'Y' to confirm, any other key to cancel"</span>, value);
-<a href=#2134 id=2134 data-nosnippet>2134</a>                    <span class="self">self</span>.ui.pending_deletion = <span class="prelude-val">Some</span>((<span class="self">self</span>.ui.current_tab.clone(), key));
+<a href=#2134 id=2134 data-nosnippet>2134</a>                    <span class="self">self</span>.ui.pending_deletion = <span class="prelude-val">Some</span>((<span class="self">self</span>.ui.current_tab, key));
 <a href=#2135 id=2135 data-nosnippet>2135</a>                }
 <a href=#2136 id=2136 data-nosnippet>2136</a>            }
 <a href=#2137 id=2137 data-nosnippet>2137</a>            <span class="kw">crate</span>::app::FocusedPanel::LayerRules =&gt; {
@@ -2140,7 +2140,7 @@
 <a href=#2140 id=2140 data-nosnippet>2140</a>                    <span class="kw">let </span>key = selected.key.clone();
 <a href=#2141 id=2141 data-nosnippet>2141</a>                    <span class="self">self</span>.ui.show_popup = <span class="bool-val">true</span>;
 <a href=#2142 id=2142 data-nosnippet>2142</a>                    <span class="self">self</span>.ui.popup_message = <span class="macro">format!</span>(<span class="string">"Delete Layer Rule: '{}' - Press 'Y' to confirm, any other key to cancel"</span>, value);
-<a href=#2143 id=2143 data-nosnippet>2143</a>                    <span class="self">self</span>.ui.pending_deletion = <span class="prelude-val">Some</span>((<span class="self">self</span>.ui.current_tab.clone(), key));
+<a href=#2143 id=2143 data-nosnippet>2143</a>                    <span class="self">self</span>.ui.pending_deletion = <span class="prelude-val">Some</span>((<span class="self">self</span>.ui.current_tab, key));
 <a href=#2144 id=2144 data-nosnippet>2144</a>                }
 <a href=#2145 id=2145 data-nosnippet>2145</a>            }
 <a href=#2146 id=2146 data-nosnippet>2146</a>            <span class="kw">_ </span>=&gt; {

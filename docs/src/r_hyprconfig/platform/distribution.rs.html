@@ -20,7 +20,7 @@
 <a href=#20 id=20 data-nosnippet>20</a>    Gentoo,
 <a href=#21 id=21 data-nosnippet>21</a>    Alpine,
 <a href=#22 id=22 data-nosnippet>22</a>    CentOS,
-<a href=#23 id=23 data-nosnippet>23</a>    RHEL,
+<a href=#23 id=23 data-nosnippet>23</a>    Rhel,
 <a href=#24 id=24 data-nosnippet>24</a>    Unknown(String),
 <a href=#25 id=25 data-nosnippet>25</a>}
 <a href=#26 id=26 data-nosnippet>26</a>
@@ -37,7 +37,7 @@
 <a href=#37 id=37 data-nosnippet>37</a>            DistributionType::Gentoo =&gt; <span class="macro">write!</span>(f, <span class="string">"Gentoo"</span>),
 <a href=#38 id=38 data-nosnippet>38</a>            DistributionType::Alpine =&gt; <span class="macro">write!</span>(f, <span class="string">"Alpine Linux"</span>),
 <a href=#39 id=39 data-nosnippet>39</a>            DistributionType::CentOS =&gt; <span class="macro">write!</span>(f, <span class="string">"CentOS"</span>),
-<a href=#40 id=40 data-nosnippet>40</a>            DistributionType::RHEL =&gt; <span class="macro">write!</span>(f, <span class="string">"Red Hat Enterprise Linux"</span>),
+<a href=#40 id=40 data-nosnippet>40</a>            DistributionType::Rhel =&gt; <span class="macro">write!</span>(f, <span class="string">"Red Hat Enterprise Linux"</span>),
 <a href=#41 id=41 data-nosnippet>41</a>            DistributionType::Unknown(name) =&gt; <span class="macro">write!</span>(f, <span class="string">"Unknown ({})"</span>, name),
 <a href=#42 id=42 data-nosnippet>42</a>        }
 <a href=#43 id=43 data-nosnippet>43</a>    }
@@ -71,7 +71,7 @@
 <a href=#71 id=71 data-nosnippet>71</a>                DistributionType::Ubuntu =&gt; <span class="string">"ubuntu"</span>,
 <a href=#72 id=72 data-nosnippet>72</a>                DistributionType::Arch =&gt; <span class="string">"arch"</span>,
 <a href=#73 id=73 data-nosnippet>73</a>                DistributionType::Fedora =&gt; <span class="string">"fedora"</span>,
-<a href=#74 id=74 data-nosnippet>74</a>                DistributionType::RHEL =&gt; <span class="string">"rhel"</span>,
+<a href=#74 id=74 data-nosnippet>74</a>                DistributionType::Rhel =&gt; <span class="string">"rhel"</span>,
 <a href=#75 id=75 data-nosnippet>75</a>                <span class="kw">_ </span>=&gt; <span class="kw">return </span><span class="bool-val">false</span>,
 <a href=#76 id=76 data-nosnippet>76</a>            };
 <a href=#77 id=77 data-nosnippet>77</a>            
@@ -273,7 +273,7 @@
 <a href=#273 id=273 data-nosnippet>273</a>            <span class="string">"gentoo" </span>=&gt; DistributionType::Gentoo,
 <a href=#274 id=274 data-nosnippet>274</a>            <span class="string">"alpine" </span>=&gt; DistributionType::Alpine,
 <a href=#275 id=275 data-nosnippet>275</a>            <span class="string">"centos" </span>=&gt; DistributionType::CentOS,
-<a href=#276 id=276 data-nosnippet>276</a>            <span class="string">"rhel" </span>=&gt; DistributionType::RHEL,
+<a href=#276 id=276 data-nosnippet>276</a>            <span class="string">"rhel" </span>=&gt; DistributionType::Rhel,
 <a href=#277 id=277 data-nosnippet>277</a>            <span class="kw">_ </span>=&gt; {
 <a href=#278 id=278 data-nosnippet>278</a>                <span class="comment">// Check ID_LIKE for derived distributions
 <a href=#279 id=279 data-nosnippet>279</a>                // Priority order: more specific distributions first
@@ -291,7 +291,7 @@
 <a href=#291 id=291 data-nosnippet>291</a>                            <span class="string">"debian" </span>=&gt; <span class="kw">return </span>DistributionType::Debian,
 <a href=#292 id=292 data-nosnippet>292</a>                            <span class="string">"arch" </span>=&gt; <span class="kw">return </span>DistributionType::Arch,
 <a href=#293 id=293 data-nosnippet>293</a>                            <span class="string">"fedora" </span>=&gt; <span class="kw">return </span>DistributionType::Fedora,
-<a href=#294 id=294 data-nosnippet>294</a>                            <span class="string">"rhel" </span>=&gt; <span class="kw">return </span>DistributionType::RHEL,
+<a href=#294 id=294 data-nosnippet>294</a>                            <span class="string">"rhel" </span>=&gt; <span class="kw">return </span>DistributionType::Rhel,
 <a href=#295 id=295 data-nosnippet>295</a>                            <span class="kw">_ </span>=&gt; {}
 <a href=#296 id=296 data-nosnippet>296</a>                        }
 <a href=#297 id=297 data-nosnippet>297</a>                    }

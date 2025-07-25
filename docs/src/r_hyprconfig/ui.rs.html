@@ -5355,7 +5355,7 @@
 <a href=#5355 id=5355 data-nosnippet>5355</a>        
 <a href=#5356 id=5356 data-nosnippet>5356</a>        <span class="comment">// Add the new item to the Binds panel
 <a href=#5357 id=5357 data-nosnippet>5357</a>        </span><span class="self">self</span>.config_items.entry(<span class="kw">crate</span>::app::FocusedPanel::Binds)
-<a href=#5358 id=5358 data-nosnippet>5358</a>            .or_insert_with(Vec::new)
+<a href=#5358 id=5358 data-nosnippet>5358</a>            .or_default()
 <a href=#5359 id=5359 data-nosnippet>5359</a>            .push(empty_item);
 <a href=#5360 id=5360 data-nosnippet>5360</a>            
 <a href=#5361 id=5361 data-nosnippet>5361</a>        <span class="comment">// Select the newly added item and start editing
@@ -5378,7 +5378,7 @@
 <a href=#5378 id=5378 data-nosnippet>5378</a>        
 <a href=#5379 id=5379 data-nosnippet>5379</a>        <span class="comment">// Add the new item to the WindowRules panel
 <a href=#5380 id=5380 data-nosnippet>5380</a>        </span><span class="self">self</span>.config_items.entry(<span class="kw">crate</span>::app::FocusedPanel::WindowRules)
-<a href=#5381 id=5381 data-nosnippet>5381</a>            .or_insert_with(Vec::new)
+<a href=#5381 id=5381 data-nosnippet>5381</a>            .or_default()
 <a href=#5382 id=5382 data-nosnippet>5382</a>            .push(empty_item);
 <a href=#5383 id=5383 data-nosnippet>5383</a>            
 <a href=#5384 id=5384 data-nosnippet>5384</a>        <span class="comment">// Select the newly added item and start editing
@@ -5401,7 +5401,7 @@
 <a href=#5401 id=5401 data-nosnippet>5401</a>        
 <a href=#5402 id=5402 data-nosnippet>5402</a>        <span class="comment">// Add the new item to the LayerRules panel
 <a href=#5403 id=5403 data-nosnippet>5403</a>        </span><span class="self">self</span>.config_items.entry(<span class="kw">crate</span>::app::FocusedPanel::LayerRules)
-<a href=#5404 id=5404 data-nosnippet>5404</a>            .or_insert_with(Vec::new)
+<a href=#5404 id=5404 data-nosnippet>5404</a>            .or_default()
 <a href=#5405 id=5405 data-nosnippet>5405</a>            .push(empty_item);
 <a href=#5406 id=5406 data-nosnippet>5406</a>            
 <a href=#5407 id=5407 data-nosnippet>5407</a>        <span class="comment">// Select the newly added item and start editing
