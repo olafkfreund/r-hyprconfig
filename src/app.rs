@@ -778,8 +778,6 @@ impl App {
     }
 
     async fn save_config(&mut self) -> Result<()> {
-        // TODO: Re-implement validation before saving
-
         // Save the application's own config
         self.config.save().await?;
 
@@ -788,6 +786,16 @@ impl App {
         let keybinds = self.ui.collect_keybinds();
         let window_rules = self.ui.collect_window_rules();
         let layer_rules = self.ui.collect_layer_rules();
+
+        // Validate configuration changes before saving
+        if let Err(validation_error) = self
+            .validate_config_changes(&config_changes, &keybinds, &window_rules, &layer_rules)
+            .await
+        {
+            self.ui.show_popup = true;
+            self.ui.popup_message = format!("Validation failed: {}", validation_error);
+            return Err(validation_error);
+        }
 
         // Check if we have any changes to save
         let has_changes = !config_changes.is_empty()
@@ -1340,45 +1348,63 @@ impl App {
                         crate::ui::ConfigDataType::Integer { min, max } => {
                             let current_val = before_value.parse::<i32>().unwrap_or(0);
                             let new_val = match (min, max) {
-                                (Some(min_val), Some(max_val)) => (current_val + 5).clamp(*min_val, *max_val),
+                                (Some(min_val), Some(max_val)) => {
+                                    (current_val + 5).clamp(*min_val, *max_val)
+                                }
                                 _ => current_val + 5,
                             };
                             match (min, max) {
-                                (Some(min_val), Some(max_val)) => format!("{} (range: {} - {})", new_val, min_val, max_val),
+                                (Some(min_val), Some(max_val)) => {
+                                    format!("{} (range: {} - {})", new_val, min_val, max_val)
+                                }
                                 _ => format!("{} (no range limit)", new_val),
                             }
                         }
                         crate::ui::ConfigDataType::Float { min, max, .. } => {
                             let current_val = before_value.parse::<f32>().unwrap_or(0.0);
                             let new_val = match (min, max) {
-                                (Some(min_val), Some(max_val)) => (current_val + 0.5).clamp(*min_val, *max_val),
+                                (Some(min_val), Some(max_val)) => {
+                                    (current_val + 0.5).clamp(*min_val, *max_val)
+                                }
                                 _ => current_val + 0.5,
                             };
                             match (min, max) {
-                                (Some(min_val), Some(max_val)) => format!("{:.2} (range: {} - {})", new_val, min_val, max_val),
+                                (Some(min_val), Some(max_val)) => {
+                                    format!("{:.2} (range: {} - {})", new_val, min_val, max_val)
+                                }
                                 _ => format!("{:.2} (no range limit)", new_val),
                             }
                         }
                         crate::ui::ConfigDataType::Boolean => {
-                            if before_value == "true" { "false".to_string() } else { "true".to_string() }
+                            if before_value == "true" {
+                                "false".to_string()
+                            } else {
+                                "true".to_string()
+                            }
                         }
-                        crate::ui::ConfigDataType::Color => {
-                            "#FF5555 (example color)".to_string()
-                        }
+                        crate::ui::ConfigDataType::Color => "#FF5555 (example color)".to_string(),
                         crate::ui::ConfigDataType::String => {
                             format!("{} (modified)", before_value)
                         }
-                        crate::ui::ConfigDataType::Keyword { options } => {
-                            options.iter().find(|&opt| opt != &before_value)
-                                .unwrap_or(&options[0]).clone()
-                        }
+                        crate::ui::ConfigDataType::Keyword { options } => options
+                            .iter()
+                            .find(|&opt| opt != &before_value)
+                            .unwrap_or(&options[0])
+                            .clone(),
                     };
 
                     let setting_name = format!("{}: {}", panel.as_str(), item.key);
-                    let before_text = format!("Current Value:\n{}\n\nDescription:\n{}", before_value, item.description);
-                    let after_text = format!("New Value:\n{}\n\nDescription:\n{}", after_value, item.description);
+                    let before_text = format!(
+                        "Current Value:\n{}\n\nDescription:\n{}",
+                        before_value, item.description
+                    );
+                    let after_text = format!(
+                        "New Value:\n{}\n\nDescription:\n{}",
+                        after_value, item.description
+                    );
 
-                    self.ui.show_setting_preview(setting_name, before_text, after_text);
+                    self.ui
+                        .show_setting_preview(setting_name, before_text, after_text);
                 } else {
                     self.ui.show_popup = true;
                     self.ui.popup_message = "No setting selected for preview".to_string();
@@ -1389,7 +1415,8 @@ impl App {
             }
         } else {
             self.ui.show_popup = true;
-            self.ui.popup_message = "No setting selected. Use ↑↓ to select a setting first".to_string();
+            self.ui.popup_message =
+                "No setting selected. Use ↑↓ to select a setting first".to_string();
         }
     }
 
@@ -1404,7 +1431,8 @@ impl App {
                 // For now, we just close the dialog and show a confirmation
                 self.ui.close_preview_dialog();
                 self.ui.show_popup = true;
-                self.ui.popup_message = format!("Applied setting: {}", self.ui.preview_setting_name);
+                self.ui.popup_message =
+                    format!("Applied setting: {}", self.ui.preview_setting_name);
             }
             KeyCode::Up => {
                 self.ui.scroll_preview_up();
@@ -1426,6 +1454,169 @@ impl App {
             }
             _ => {}
         }
+        Ok(())
+    }
+
+    async fn validate_config_changes(
+        &self,
+        config_changes: &std::collections::HashMap<String, String>,
+        keybinds: &[String],
+        window_rules: &[String],
+        layer_rules: &[String],
+    ) -> Result<()> {
+        let mut validation_errors = Vec::new();
+
+        // Validate configuration values
+        for (key, value) in config_changes {
+            if let Err(error) = self.validate_config_option(key, value).await {
+                validation_errors.push(format!("Config option '{}': {}", key, error));
+            }
+        }
+
+        // Validate keybinds
+        for (index, keybind) in keybinds.iter().enumerate() {
+            if let Err(error) = self.validate_keybind(keybind).await {
+                validation_errors.push(format!("Keybind {}: {}", index + 1, error));
+            }
+        }
+
+        // Validate window rules
+        for (index, rule) in window_rules.iter().enumerate() {
+            if let Err(error) = self.validate_window_rule(rule).await {
+                validation_errors.push(format!("Window rule {}: {}", index + 1, error));
+            }
+        }
+
+        // Validate layer rules
+        for (index, rule) in layer_rules.iter().enumerate() {
+            if let Err(error) = self.validate_layer_rule(rule).await {
+                validation_errors.push(format!("Layer rule {}: {}", index + 1, error));
+            }
+        }
+
+        if !validation_errors.is_empty() {
+            return Err(anyhow::anyhow!(
+                "Validation failed:\n{}",
+                validation_errors.join("\n")
+            ));
+        }
+
+        Ok(())
+    }
+
+    async fn validate_config_option(&self, key: &str, value: &str) -> Result<()> {
+        // Basic validation for common configuration options
+        match key {
+            // Integer values
+            k if k.contains("gaps_") || k.contains("border_size") || k.contains("rounding") => {
+                if value.parse::<i32>().is_err() {
+                    return Err(anyhow::anyhow!("must be a valid integer"));
+                }
+                let val = value.parse::<i32>().unwrap();
+                if val < 0 {
+                    return Err(anyhow::anyhow!("must be non-negative"));
+                }
+            }
+            // Float values
+            k if k.contains("opacity") || k.contains("sensitivity") => {
+                if value.parse::<f32>().is_err() {
+                    return Err(anyhow::anyhow!("must be a valid decimal number"));
+                }
+                let val = value.parse::<f32>().unwrap();
+                if k.contains("opacity") && (val < 0.0 || val > 1.0) {
+                    return Err(anyhow::anyhow!("opacity must be between 0.0 and 1.0"));
+                }
+            }
+            // Boolean values
+            k if k.contains("enabled") || k.contains("disable_") => {
+                if !["true", "false", "1", "0", "yes", "no"]
+                    .contains(&value.to_lowercase().as_str())
+                {
+                    return Err(anyhow::anyhow!("must be true/false, 1/0, or yes/no"));
+                }
+            }
+            // Color values
+            k if k.contains("col.") => {
+                if !value.starts_with("rgb(")
+                    && !value.starts_with("rgba(")
+                    && !value.starts_with("#")
+                {
+                    return Err(anyhow::anyhow!(
+                        "must be a valid color (rgb(), rgba(), or #hex)"
+                    ));
+                }
+            }
+            _ => {
+                // For unknown options, just check they're not empty
+                if value.trim().is_empty() {
+                    return Err(anyhow::anyhow!("value cannot be empty"));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn validate_keybind(&self, keybind: &str) -> Result<()> {
+        // Basic keybind format validation
+        if !keybind.starts_with("bind") {
+            return Err(anyhow::anyhow!(
+                "must start with 'bind', 'binde', 'bindm', etc."
+            ));
+        }
+
+        // Check for required components (modifiers, key, dispatcher)
+        let parts: Vec<&str> = keybind.split(',').collect();
+        if parts.len() < 4 {
+            return Err(anyhow::anyhow!(
+                "must have format: bind = MODIFIERS, KEY, DISPATCHER, ARGS"
+            ));
+        }
+
+        // Validate that key isn't empty
+        let key = parts.get(2).unwrap_or(&"").trim();
+        if key.is_empty() {
+            return Err(anyhow::anyhow!("key cannot be empty"));
+        }
+
+        // Validate that dispatcher isn't empty
+        let dispatcher = parts.get(3).unwrap_or(&"").trim();
+        if dispatcher.is_empty() {
+            return Err(anyhow::anyhow!("dispatcher cannot be empty"));
+        }
+
+        Ok(())
+    }
+
+    async fn validate_window_rule(&self, rule: &str) -> Result<()> {
+        // Basic window rule format validation
+        if !rule.starts_with("windowrule") {
+            return Err(anyhow::anyhow!("must start with 'windowrule'"));
+        }
+
+        // Check for basic format
+        if !rule.contains('=') || !rule.contains(',') {
+            return Err(anyhow::anyhow!(
+                "must have format: windowrule = RULE, WINDOW_PATTERN"
+            ));
+        }
+
+        Ok(())
+    }
+
+    async fn validate_layer_rule(&self, rule: &str) -> Result<()> {
+        // Basic layer rule format validation
+        if !rule.starts_with("layerrule") {
+            return Err(anyhow::anyhow!("must start with 'layerrule'"));
+        }
+
+        // Check for basic format
+        if !rule.contains('=') || !rule.contains(',') {
+            return Err(anyhow::anyhow!(
+                "must have format: layerrule = RULE, LAYER_PATTERN"
+            ));
+        }
+
         Ok(())
     }
 }

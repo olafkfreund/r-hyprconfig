@@ -4628,7 +4628,7 @@ impl UI {
     fn render_preview_dialog(&self, f: &mut Frame, area: Rect) {
         // Create popup area (80% of screen)
         let popup_area = Self::centered_rect(80, 70, area);
-        
+
         // Clear the area
         f.render_widget(Clear, popup_area);
 
@@ -4691,7 +4691,10 @@ impl UI {
         let title_content = vec![
             Line::from(vec![
                 Span::styled("Preview: ", Style::default().fg(Color::Cyan).bold()),
-                Span::styled(&self.preview_setting_name, Style::default().fg(Color::White).bold()),
+                Span::styled(
+                    &self.preview_setting_name,
+                    Style::default().fg(Color::White).bold(),
+                ),
             ]),
             Line::from(vec![
                 Span::raw("Use "),
@@ -4704,8 +4707,7 @@ impl UI {
             ]),
         ];
 
-        let title_paragraph = Paragraph::new(title_content)
-            .alignment(Alignment::Center);
+        let title_paragraph = Paragraph::new(title_content).alignment(Alignment::Center);
 
         f.render_widget(title_paragraph, title_area);
     }
