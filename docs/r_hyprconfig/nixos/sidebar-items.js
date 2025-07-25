@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["NixConfigType"],"mod":["config_discovery","converter","detection","parser"],"struct":["NixConfigLocation","NixOSConfig","NixOSEnvironment"]};
+window.SIDEBAR_ITEMS = {"enum":["NixConfigType"],"mod":["config_discovery","converter","detection","generator","parser"],"struct":["NixConfigLocation","NixOSConfig","NixOSEnvironment"]};

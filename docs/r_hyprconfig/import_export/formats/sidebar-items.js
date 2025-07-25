@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ConfigFormat"],"struct":["AnimationSettings","ConfigMetadata","DecorationSettings","GeneralSettings","GestureSettings","InputSettings","KeybindEntry","LayerRuleEntry","MiscSettings","StructuredConfig","WindowRuleEntry"]};

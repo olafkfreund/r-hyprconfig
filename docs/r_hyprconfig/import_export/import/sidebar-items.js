@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["AssetType","ConflictResolution","ConflictType","ImportSource"],"struct":["AssetInfo","ConfigImporter","ConflictInfo","DiscoveredConfig","ImportOptions","ImportPreview"]};

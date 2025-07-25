@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["main"],"mod":["app","batch","config","hyprctl","nixos","theme","ui"],"struct":["Cli"]};
+window.SIDEBAR_ITEMS = {"fn":["main"],"mod":["app","batch","config","hyprctl","import_export","nixos","platform","theme","ui"],"struct":["Cli"]};

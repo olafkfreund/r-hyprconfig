@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"static":["PATH_CACHE"],"struct":["ConfigPathManager","PathConfiguration"]};
