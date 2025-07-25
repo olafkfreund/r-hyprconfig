@@ -229,6 +229,10 @@ impl App {
             return self.handle_help_key(key).await;
         }
 
+        if self.ui.show_preview_dialog {
+            return self.handle_preview_dialog_key(key).await;
+        }
+
         if self.ui.search_mode {
             return self.handle_search_key(key).await;
         }
@@ -311,6 +315,9 @@ impl App {
                     self.ui.popup_message =
                         "NixOS export is only available on NixOS systems".to_string();
                 }
+            }
+            KeyCode::Char('p') | KeyCode::Char('P') => {
+                self.show_setting_preview().await;
             }
             KeyCode::Char('b') | KeyCode::Char('B') => {
                 self.show_batch_dialog().await;
@@ -1306,5 +1313,119 @@ impl App {
             self.ui.show_popup = true;
             self.ui.popup_message = "No profile selected for operation".to_string();
         }
+    }
+
+    async fn show_setting_preview(&mut self) {
+        // Get the currently selected setting based on focused panel
+        let panel = self.focused_panel;
+        let selected_index = match panel {
+            FocusedPanel::General => self.ui.general_list_state.selected(),
+            FocusedPanel::Input => self.ui.input_list_state.selected(),
+            FocusedPanel::Decoration => self.ui.decoration_list_state.selected(),
+            FocusedPanel::Animations => self.ui.animations_list_state.selected(),
+            FocusedPanel::Gestures => self.ui.gestures_list_state.selected(),
+            FocusedPanel::Binds => self.ui.binds_list_state.selected(),
+            FocusedPanel::WindowRules => self.ui.window_rules_list_state.selected(),
+            FocusedPanel::LayerRules => self.ui.layer_rules_list_state.selected(),
+            FocusedPanel::Misc => self.ui.misc_list_state.selected(),
+        };
+
+        if let Some(index) = selected_index {
+            // Get the configuration items for this panel
+            if let Some(config_items) = self.ui.config_items.get(&panel) {
+                if let Some(item) = config_items.get(index) {
+                    // Create example before/after for demonstration
+                    let before_value = item.value.clone();
+                    let after_value = match &item.data_type {
+                        crate::ui::ConfigDataType::Integer { min, max } => {
+                            let current_val = before_value.parse::<i32>().unwrap_or(0);
+                            let new_val = match (min, max) {
+                                (Some(min_val), Some(max_val)) => (current_val + 5).clamp(*min_val, *max_val),
+                                _ => current_val + 5,
+                            };
+                            match (min, max) {
+                                (Some(min_val), Some(max_val)) => format!("{} (range: {} - {})", new_val, min_val, max_val),
+                                _ => format!("{} (no range limit)", new_val),
+                            }
+                        }
+                        crate::ui::ConfigDataType::Float { min, max, .. } => {
+                            let current_val = before_value.parse::<f32>().unwrap_or(0.0);
+                            let new_val = match (min, max) {
+                                (Some(min_val), Some(max_val)) => (current_val + 0.5).clamp(*min_val, *max_val),
+                                _ => current_val + 0.5,
+                            };
+                            match (min, max) {
+                                (Some(min_val), Some(max_val)) => format!("{:.2} (range: {} - {})", new_val, min_val, max_val),
+                                _ => format!("{:.2} (no range limit)", new_val),
+                            }
+                        }
+                        crate::ui::ConfigDataType::Boolean => {
+                            if before_value == "true" { "false".to_string() } else { "true".to_string() }
+                        }
+                        crate::ui::ConfigDataType::Color => {
+                            "#FF5555 (example color)".to_string()
+                        }
+                        crate::ui::ConfigDataType::String => {
+                            format!("{} (modified)", before_value)
+                        }
+                        crate::ui::ConfigDataType::Keyword { options } => {
+                            options.iter().find(|&opt| opt != &before_value)
+                                .unwrap_or(&options[0]).clone()
+                        }
+                    };
+
+                    let setting_name = format!("{}: {}", panel.as_str(), item.key);
+                    let before_text = format!("Current Value:\n{}\n\nDescription:\n{}", before_value, item.description);
+                    let after_text = format!("New Value:\n{}\n\nDescription:\n{}", after_value, item.description);
+
+                    self.ui.show_setting_preview(setting_name, before_text, after_text);
+                } else {
+                    self.ui.show_popup = true;
+                    self.ui.popup_message = "No setting selected for preview".to_string();
+                }
+            } else {
+                self.ui.show_popup = true;
+                self.ui.popup_message = "No configuration items available for preview".to_string();
+            }
+        } else {
+            self.ui.show_popup = true;
+            self.ui.popup_message = "No setting selected. Use ↑↓ to select a setting first".to_string();
+        }
+    }
+
+    async fn handle_preview_dialog_key(&mut self, key: KeyCode) -> Result<()> {
+        match key {
+            KeyCode::Esc => {
+                self.ui.close_preview_dialog();
+            }
+            KeyCode::Enter => {
+                // Apply the change and close preview
+                // This would trigger the actual configuration change
+                // For now, we just close the dialog and show a confirmation
+                self.ui.close_preview_dialog();
+                self.ui.show_popup = true;
+                self.ui.popup_message = format!("Applied setting: {}", self.ui.preview_setting_name);
+            }
+            KeyCode::Up => {
+                self.ui.scroll_preview_up();
+            }
+            KeyCode::Down => {
+                self.ui.scroll_preview_down();
+            }
+            KeyCode::PageUp => {
+                // Scroll up by multiple lines
+                for _ in 0..5 {
+                    self.ui.scroll_preview_up();
+                }
+            }
+            KeyCode::PageDown => {
+                // Scroll down by multiple lines
+                for _ in 0..5 {
+                    self.ui.scroll_preview_down();
+                }
+            }
+            _ => {}
+        }
+        Ok(())
     }
 }

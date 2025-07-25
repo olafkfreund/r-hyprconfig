@@ -166,6 +166,13 @@ pub struct UI {
     pub batch_dialog_mode: BatchDialogMode,
     pub batch_selected_profile: Option<String>,
     pub batch_operation_type: crate::batch::BatchOperationType,
+
+    // Visual preview system for configuration changes
+    pub show_preview_dialog: bool,
+    pub preview_before: Option<String>,
+    pub preview_after: Option<String>,
+    pub preview_setting_name: String,
+    pub preview_scroll: usize,
 }
 
 impl UI {
@@ -240,6 +247,13 @@ impl UI {
             batch_dialog_mode: BatchDialogMode::ManageProfiles,
             batch_selected_profile: None,
             batch_operation_type: crate::batch::BatchOperationType::Apply,
+
+            // Visual preview system
+            show_preview_dialog: false,
+            preview_before: None,
+            preview_after: None,
+            preview_setting_name: String::new(),
+            preview_scroll: 0,
         };
 
         // Initialize with first item selected for each panel
@@ -1931,6 +1945,9 @@ impl UI {
 
         if self.show_help {
             self.render_help_overlay(f, size);
+        }
+        if self.show_preview_dialog {
+            self.render_preview_dialog(f, size);
         }
     }
 
@@ -4037,6 +4054,7 @@ impl UI {
             Line::from("  ↑↓                 Navigate items"),
             Line::from("  PgUp/PgDn           Change page"),
             Line::from("  /                  Start search"),
+            Line::from("  P                  Preview changes"),
             Line::from("  Esc                Exit search/dialogs"),
             Line::from(""),
             Line::from(vec![Span::styled(
@@ -4044,6 +4062,7 @@ impl UI {
                 Style::default().fg(self.theme.accent_secondary).bold(),
             )]),
             Line::from("  Enter              Edit selected item"),
+            Line::from("  P                  Preview setting changes"),
             Line::from("  S                  Save configuration"),
             Line::from("  R                  Reload configuration"),
             Line::from("  A                  Add new item"),
@@ -4100,6 +4119,48 @@ impl UI {
             Line::from("  • Validation prevents invalid configurations"),
             Line::from("  • All changes are backed up automatically"),
             Line::from("  • Theme changes are saved immediately"),
+            Line::from("  • Use P to preview changes before applying"),
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                "📖 Configuration Reference",
+                Style::default().fg(self.theme.accent_warning).bold(),
+            )]),
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                "General Settings:",
+                Style::default().fg(Color::Cyan).bold(),
+            )]),
+            Line::from("  • gaps_in/out: Space between windows (pixels)"),
+            Line::from("  • border_size: Window border thickness (1-20)"),
+            Line::from("  • layout: Window layout algorithm (dwindle/master)"),
+            Line::from("  • resize_on_border: Click border to resize (true/false)"),
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                "Input Settings:",
+                Style::default().fg(Color::Cyan).bold(),
+            )]),
+            Line::from("  • kb_layout: Keyboard layout (us, de, fr, etc.)"),
+            Line::from("  • sensitivity: Mouse sensitivity (-1.0 to 1.0)"),
+            Line::from("  • repeat_rate/delay: Key repeat timing"),
+            Line::from("  • follow_mouse: Focus follows mouse (0-3)"),
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                "Decoration Settings:",
+                Style::default().fg(Color::Cyan).bold(),
+            )]),
+            Line::from("  • rounding: Corner radius for windows (0-20)"),
+            Line::from("  • active_opacity: Opacity of focused windows (0.0-1.0)"),
+            Line::from("  • inactive_opacity: Opacity of unfocused windows"),
+            Line::from("  • drop_shadow: Enable window shadows (true/false)"),
+            Line::from(""),
+            Line::from(vec![Span::styled(
+                "Animation Settings:",
+                Style::default().fg(Color::Cyan).bold(),
+            )]),
+            Line::from("  • enabled: Enable animations (true/false)"),
+            Line::from("  • bezier curves: Custom animation timing"),
+            Line::from("  • windowsIn/Out: Window open/close animations"),
+            Line::from("  • workspaces: Workspace switching animations"),
             Line::from(""),
             Line::from(vec![Span::styled(
                 "🚀 NixOS Integration",
@@ -4535,5 +4596,117 @@ impl UI {
             .alignment(Alignment::Left);
 
         f.render_widget(popup, area);
+    }
+
+    // Visual preview system methods
+    pub fn show_setting_preview(&mut self, setting_name: String, before: String, after: String) {
+        self.show_preview_dialog = true;
+        self.preview_setting_name = setting_name;
+        self.preview_before = Some(before);
+        self.preview_after = Some(after);
+        self.preview_scroll = 0;
+    }
+
+    pub fn close_preview_dialog(&mut self) {
+        self.show_preview_dialog = false;
+        self.preview_before = None;
+        self.preview_after = None;
+        self.preview_setting_name.clear();
+        self.preview_scroll = 0;
+    }
+
+    pub fn scroll_preview_up(&mut self) {
+        if self.preview_scroll > 0 {
+            self.preview_scroll -= 1;
+        }
+    }
+
+    pub fn scroll_preview_down(&mut self) {
+        self.preview_scroll += 1;
+    }
+
+    fn render_preview_dialog(&self, f: &mut Frame, area: Rect) {
+        // Create popup area (80% of screen)
+        let popup_area = Self::centered_rect(80, 70, area);
+        
+        // Clear the area
+        f.render_widget(Clear, popup_area);
+
+        // Split the popup into two columns for before/after comparison
+        let columns = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(popup_area);
+
+        // Before panel (left side)
+        let before_content = if let Some(before) = &self.preview_before {
+            before.clone()
+        } else {
+            "No previous value".to_string()
+        };
+
+        let before_paragraph = Paragraph::new(before_content)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().fg(Color::Red))
+                    .title(" Before ")
+                    .title_style(Style::default().fg(Color::Red).bold()),
+            )
+            .wrap(Wrap { trim: true })
+            .scroll((self.preview_scroll as u16, 0));
+
+        f.render_widget(before_paragraph, columns[0]);
+
+        // After panel (right side)
+        let after_content = if let Some(after) = &self.preview_after {
+            after.clone()
+        } else {
+            "New value".to_string()
+        };
+
+        let after_paragraph = Paragraph::new(after_content)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().fg(Color::Green))
+                    .title(" After ")
+                    .title_style(Style::default().fg(Color::Green).bold()),
+            )
+            .wrap(Wrap { trim: true })
+            .scroll((self.preview_scroll as u16, 0));
+
+        f.render_widget(after_paragraph, columns[1]);
+
+        // Add a title bar with the setting name and instructions
+        let title_area = Rect {
+            x: popup_area.x,
+            y: popup_area.y.saturating_sub(2),
+            width: popup_area.width,
+            height: 2,
+        };
+
+        let title_content = vec![
+            Line::from(vec![
+                Span::styled("Preview: ", Style::default().fg(Color::Cyan).bold()),
+                Span::styled(&self.preview_setting_name, Style::default().fg(Color::White).bold()),
+            ]),
+            Line::from(vec![
+                Span::raw("Use "),
+                Span::styled("↑↓", Style::default().fg(Color::Yellow).bold()),
+                Span::raw(" to scroll, "),
+                Span::styled("Enter", Style::default().fg(Color::Green).bold()),
+                Span::raw(" to apply, "),
+                Span::styled("Esc", Style::default().fg(Color::Red).bold()),
+                Span::raw(" to cancel"),
+            ]),
+        ];
+
+        let title_paragraph = Paragraph::new(title_content)
+            .alignment(Alignment::Center);
+
+        f.render_widget(title_paragraph, title_area);
     }
 }
