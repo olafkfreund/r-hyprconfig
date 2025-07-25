@@ -7,6 +7,8 @@ use crate::hyprctl::HyprlandConfig;
 use crate::platform::{ConfigPathManager, DistributionDetector, DistributionType};
 use super::{NixConfigType, ConfigConverter};
 
+// Allow dead code for NixOS generation functionality that will be used by TUI in future
+#[allow(dead_code)]
 /// Options for NixOS configuration generation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NixGenerationOptions {

@@ -3,10 +3,13 @@ use std::path::PathBuf;
 
 use crate::hyprctl::HyprlandConfig;
 use crate::platform::ConfigPathManager;
-use super::formats::{ConfigFormat, StructuredConfig, ConfigMetadata, GeneralSettings, InputSettings, DecorationSettings, AnimationSettings, GestureSettings, MiscSettings, KeybindEntry, WindowRuleEntry, LayerRuleEntry};
+use super::formats::{ConfigFormat, StructuredConfig, GeneralSettings, InputSettings, DecorationSettings, AnimationSettings, GestureSettings, MiscSettings, KeybindEntry, WindowRuleEntry, LayerRuleEntry};
 
+// Allow dead code for export functionality that will be used by TUI in future
+#[allow(dead_code)]
 /// Configuration exporter that can save configurations in various formats
 pub struct ConfigExporter {
+    #[allow(dead_code)]
     output_dir: PathBuf,
 }
 

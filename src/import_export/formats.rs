@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+// Allow dead code for format functionality that will be used by TUI in future
+#[allow(dead_code)]
 /// Supported configuration formats for import/export
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ConfigFormat {

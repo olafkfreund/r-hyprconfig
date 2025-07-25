@@ -1,12 +1,13 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use crate::platform::ConfigPathManager;
-use super::formats::{ConfigFormat, StructuredConfig, ConfigMetadata};
+use super::formats::{ConfigFormat, StructuredConfig};
 
+// Allow dead code for import functionality that will be used by TUI in future
+#[allow(dead_code)]
 /// Different sources for importing configurations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ImportSource {
@@ -259,7 +260,7 @@ impl ConfigImporter {
 
         // Checkout specific tag or commit if specified
         if let Some(tag) = tag {
-            let (object, reference) = repo.revparse_ext(tag)
+            let (object, _reference) = repo.revparse_ext(tag)
                 .with_context(|| format!("Failed to find tag: {}", tag))?;
             repo.checkout_tree(&object, None)
                 .with_context(|| format!("Failed to checkout tag: {}", tag))?;

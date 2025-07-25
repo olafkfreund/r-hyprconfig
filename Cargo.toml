@@ -7,14 +7,14 @@ license = "MIT"
 repository = "https://github.com/olafkfreund/r-hyprconfig"
 keywords = ["hyprland", "tui", "configuration", "rust"]
 categories = ["command-line-utilities", "config"]
-authors = ["Olaf Freund <olafkfreund@example.com>"]
+authors = ["Olaf Freund <olaf.loken@gmail.com>"]
 homepage = "https://github.com/olafkfreund/r-hyprconfig"
 documentation = "https://github.com/olafkfreund/r-hyprconfig/blob/main/README.md"
 
 # Package metadata for deb generation
 [package.metadata.deb]
-maintainer = "Olaf Freund <olafkfreund@example.com>"
-copyright = "2025, Olaf Freund <olafkfreund@example.com>"
+maintainer = "Olaf Freund <olaf.loken@gmail.com>"
+copyright = "2025, Olaf Freund <olaf.loken@gmail.com>"
 license-file = ["LICENSE", "4"]
 extended-description = """\
 r-hyprconfig is a modern terminal user interface (TUI) application \

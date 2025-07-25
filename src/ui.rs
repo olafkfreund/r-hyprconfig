@@ -75,6 +75,32 @@ pub enum BatchDialogMode {
     ExecuteOperation,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum ImportExportMode {
+    SelectSource,
+    SelectFormat,
+    Preview,
+    Execute,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ImportSourceType {
+    LocalFile,
+    LocalFolder,
+    GitHubRepository,
+    UrlDownload,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExportFormatType {
+    HyprlandConf,
+    Json,
+    Toml,
+    Yaml,
+    RHyprConfig,
+    NixOS,
+}
+
 #[derive(Debug, Clone)]
 pub struct ConfigItem {
     pub key: String,
@@ -180,6 +206,18 @@ pub struct UI {
     pub preview_after: Option<String>,
     pub preview_setting_name: String,
     pub preview_scroll: usize,
+
+    // Import/Export dialog state
+    pub show_import_dialog: bool,
+    pub show_export_dialog: bool,
+    pub import_export_mode: ImportExportMode,
+    pub selected_import_source: ImportSourceType,
+    pub selected_export_format: ExportFormatType,
+    pub import_preview: Option<String>,
+    pub export_preview: Option<String>,
+    pub import_export_scroll: usize,
+    pub import_list_state: ListState,
+    pub export_list_state: ListState,
 }
 
 impl UI {
@@ -268,6 +306,18 @@ impl UI {
             preview_after: None,
             preview_setting_name: String::new(),
             preview_scroll: 0,
+
+            // Import/Export dialog system
+            show_import_dialog: false,
+            show_export_dialog: false,
+            import_export_mode: ImportExportMode::SelectSource,
+            selected_import_source: ImportSourceType::LocalFile,
+            selected_export_format: ExportFormatType::HyprlandConf,
+            import_preview: None,
+            export_preview: None,
+            import_export_scroll: 0,
+            import_list_state: ListState::default(),
+            export_list_state: ListState::default(),
         };
 
         // Initialize with first item selected for each panel
@@ -280,6 +330,8 @@ impl UI {
         ui.window_rules_list_state.select(Some(0));
         ui.layer_rules_list_state.select(Some(0));
         ui.misc_list_state.select(Some(0));
+        ui.import_list_state.select(Some(0));
+        ui.export_list_state.select(Some(0));
 
         // Initialize config items with enhanced data
         ui.initialize_config_items();
@@ -306,6 +358,8 @@ impl UI {
             FocusedPanel::WindowRules => &mut self.window_rules_list_state,
             FocusedPanel::LayerRules => &mut self.layer_rules_list_state,
             FocusedPanel::Misc => &mut self.misc_list_state,
+            FocusedPanel::Import => &mut self.import_list_state,
+            FocusedPanel::Export => &mut self.export_list_state,
         }
     }
 
@@ -1206,6 +1260,120 @@ impl UI {
         }
         if !misc_items.is_empty() {
             self.config_items.insert(FocusedPanel::Misc, misc_items);
+            
+        // Import configuration panel items
+        let import_items = vec![
+            ConfigItem {
+                key: "local_file".to_string(),
+                value: "Select a file to import".to_string(),
+                description: "Import configuration from a local Hyprland config file (.conf, .json, .toml, .yaml)".to_string(),
+                data_type: ConfigDataType::String,
+                suggestions: vec![
+                    "~/.config/hypr/hyprland.conf".to_string(),
+                    "./hyprland.conf".to_string(),
+                    "./config.json".to_string(),
+                ],
+            },
+            ConfigItem {
+                key: "local_folder".to_string(),
+                value: "Select a folder to scan".to_string(),
+                description: "Scan and import from a directory containing Hyprland configuration files".to_string(),
+                data_type: ConfigDataType::String,
+                suggestions: vec![
+                    "~/.config/hypr/".to_string(),
+                    "./dotfiles/hypr/".to_string(),
+                    "~/Downloads/hypr-configs/".to_string(),
+                ],
+            },
+            ConfigItem {
+                key: "github_repo".to_string(),
+                value: "Enter GitHub repository URL".to_string(),
+                description: "Import configuration from a GitHub repository (dotfiles, configs, etc.)".to_string(),
+                data_type: ConfigDataType::String,
+                suggestions: vec![
+                    "https://github.com/user/dotfiles".to_string(),
+                    "https://github.com/user/hyprland-config".to_string(),
+                    "user/dotfiles".to_string(),
+                ],
+            },
+            ConfigItem {
+                key: "url_download".to_string(),
+                value: "Enter direct URL".to_string(),
+                description: "Import configuration from a direct URL (pastebin, gist, raw file)".to_string(),
+                data_type: ConfigDataType::String,
+                suggestions: vec![
+                    "https://pastebin.com/raw/...".to_string(),
+                    "https://gist.githubusercontent.com/...".to_string(),
+                    "https://raw.githubusercontent.com/...".to_string(),
+                ],
+            },
+        ];
+        self.config_items.insert(FocusedPanel::Import, import_items);
+        
+        // Export configuration panel items
+        let export_items = vec![
+            ConfigItem {
+                key: "hyprland_conf".to_string(),
+                value: "Standard Hyprland format".to_string(),
+                description: "Export as standard hyprland.conf file compatible with Hyprland".to_string(),
+                data_type: ConfigDataType::String,
+                suggestions: vec![
+                    "hyprland_export.conf".to_string(),
+                    "my_hyprland_config.conf".to_string(),
+                ],
+            },
+            ConfigItem {
+                key: "json_format".to_string(),
+                value: "Structured JSON format".to_string(),
+                description: "Export as JSON with hierarchical structure and metadata".to_string(),
+                data_type: ConfigDataType::String,
+                suggestions: vec![
+                    "config_export.json".to_string(),
+                    "hyprland_backup.json".to_string(),
+                ],
+            },
+            ConfigItem {
+                key: "toml_format".to_string(),
+                value: "Human-readable TOML".to_string(),
+                description: "Export as TOML configuration file for easy editing".to_string(),
+                data_type: ConfigDataType::String,
+                suggestions: vec![
+                    "config_export.toml".to_string(),
+                    "hyprland_settings.toml".to_string(),
+                ],
+            },
+            ConfigItem {
+                key: "yaml_format".to_string(),
+                value: "Clean YAML format".to_string(),
+                description: "Export as YAML with clean indentation and comments".to_string(),
+                data_type: ConfigDataType::String,
+                suggestions: vec![
+                    "config_export.yaml".to_string(),
+                    "hyprland_config.yml".to_string(),
+                ],
+            },
+            ConfigItem {
+                key: "rhypr_format".to_string(),
+                value: "R-Hyprconfig native format".to_string(),
+                description: "Export in r-hyprconfig native format with full feature support".to_string(),
+                data_type: ConfigDataType::String,
+                suggestions: vec![
+                    "config_backup.rhypr".to_string(),
+                    "my_hyprland_setup.rhypr".to_string(),
+                ],
+            },
+            ConfigItem {
+                key: "nixos_format".to_string(),
+                value: "NixOS declarative module".to_string(),
+                description: "Export as NixOS configuration module for declarative system management".to_string(),
+                data_type: ConfigDataType::String,
+                suggestions: vec![
+                    "hyprland_module.nix".to_string(),
+                    "home_manager_hyprland.nix".to_string(),
+                ],
+            },
+        ];
+        self.config_items.insert(FocusedPanel::Export, export_items);
         }
     }
 
@@ -1945,6 +2113,14 @@ impl UI {
             self.render_reload_dialog(f, size);
         }
 
+        if self.show_import_dialog {
+            self.render_import_dialog(f, size);
+        }
+
+        if self.show_export_dialog {
+            self.render_export_dialog(f, size);
+        }
+
         if self.show_nixos_export_dialog {
             self.render_nixos_export_dialog(f, size);
         }
@@ -2077,6 +2253,8 @@ impl UI {
                     FocusedPanel::WindowRules => "Win Rules",
                     FocusedPanel::LayerRules => "Layer Rules",
                     FocusedPanel::Misc => "Misc",
+                    FocusedPanel::Import => "Import",
+                    FocusedPanel::Export => "Export",
                 };
 
                 // Add pagination info to current tab
@@ -2174,6 +2352,8 @@ impl UI {
             FocusedPanel::WindowRules => "📏 Window Rules Configuration",
             FocusedPanel::LayerRules => "📐 Layer Rules Configuration",
             FocusedPanel::Misc => "⚙️ Miscellaneous Configuration",
+            FocusedPanel::Import => "📥 Import Configuration",
+            FocusedPanel::Export => "📤 Export Configuration",
         };
 
         let list = List::new(items)
@@ -2274,6 +2454,8 @@ impl UI {
             FocusedPanel::WindowRules => "Window Rules Configuration",
             FocusedPanel::LayerRules => "Layer Rules Configuration",
             FocusedPanel::Misc => "Miscellaneous Configuration",
+            FocusedPanel::Import => "Import Configuration",
+            FocusedPanel::Export => "Export Configuration",
         };
 
         let mut block = Block::default()
@@ -3038,6 +3220,16 @@ impl UI {
                 ListItem::new("animate_manual_resizes: false"),
                 ListItem::new("animate_mouse_windowdragging: false"),
             ],
+            FocusedPanel::Import => vec![
+                ListItem::new("Select import source from the options above"),
+                ListItem::new("Press Enter to start import wizard"),
+                ListItem::new("Supports .conf, .json, .toml, .yaml formats"),
+            ],
+            FocusedPanel::Export => vec![
+                ListItem::new("Select export format from the options above"),
+                ListItem::new("Press Enter to start export wizard"),
+                ListItem::new("Export to various formats for sharing"),
+            ],
         }
     }
 
@@ -3061,6 +3253,8 @@ impl UI {
             FocusedPanel::WindowRules => &self.window_rules_list_state,
             FocusedPanel::LayerRules => &self.layer_rules_list_state,
             FocusedPanel::Misc => &self.misc_list_state,
+            FocusedPanel::Import => &self.import_list_state,
+            FocusedPanel::Export => &self.export_list_state,
         }
     }
 
@@ -3075,6 +3269,8 @@ impl UI {
             FocusedPanel::WindowRules => &mut self.window_rules_list_state,
             FocusedPanel::LayerRules => &mut self.layer_rules_list_state,
             FocusedPanel::Misc => &mut self.misc_list_state,
+            FocusedPanel::Import => &mut self.import_list_state,
+            FocusedPanel::Export => &mut self.export_list_state,
         }
     }
 
@@ -4744,6 +4940,244 @@ impl UI {
         f.render_widget(title_paragraph, title_area);
     }
 
+    fn render_import_dialog(&self, f: &mut Frame, area: Rect) {
+        let popup_area = self.center_rect(80, 70, area);
+        f.render_widget(Clear, popup_area);
+
+        let block = Block::default()
+            .title(" Import Configuration ")
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .style(self.theme.popup_style());
+
+        f.render_widget(block, popup_area);
+
+        let inner = popup_area.inner(ratatui::layout::Margin {
+            vertical: 1,
+            horizontal: 2,
+        });
+
+        match self.import_export_mode {
+            ImportExportMode::SelectSource => {
+                let content = vec![
+                    Line::from(vec![
+                        Span::styled("Select Import Source:", self.theme.header_style().bold()),
+                    ]),
+                    Line::raw(""),
+                    Line::from(vec![
+                        Span::styled("1. ", Style::default().fg(self.theme.accent_primary).bold()),
+                        Span::raw("Local File - Import from a single configuration file"),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("2. ", Style::default().fg(self.theme.accent_primary).bold()),
+                        Span::raw("Local Folder - Scan and import from a directory"),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("3. ", Style::default().fg(self.theme.accent_primary).bold()),
+                        Span::raw("GitHub Repository - Import from a Git repository"),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("4. ", Style::default().fg(self.theme.accent_primary).bold()),
+                        Span::raw("URL Download - Import from a direct URL"),
+                    ]),
+                    Line::raw(""),
+                    Line::from(vec![
+                        Span::styled("Selected: ", Style::default().fg(self.theme.fg_secondary)),
+                        Span::styled(
+                            format!("{:?}", self.selected_import_source),
+                            Style::default().fg(self.theme.accent_info).bold(),
+                        ),
+                    ]),
+                ];
+
+                let paragraph = Paragraph::new(content)
+                    .style(Style::default().fg(self.theme.fg_primary))
+                    .wrap(Wrap { trim: true });
+
+                f.render_widget(paragraph, inner);
+            }
+            ImportExportMode::Preview => {
+                if let Some(preview_text) = &self.import_preview {
+                    let content: Vec<Line> = preview_text
+                        .lines()
+                        .skip(self.import_export_scroll)
+                        .take(inner.height as usize - 3)
+                        .map(|line| Line::raw(line))
+                        .collect();
+
+                    let paragraph = Paragraph::new(content)
+                        .style(Style::default().fg(self.theme.fg_primary))
+                        .wrap(Wrap { trim: true });
+
+                    f.render_widget(paragraph, inner);
+
+                    // Add scroll instructions
+                    let instructions_area = Rect {
+                        x: inner.x,
+                        y: inner.bottom() - 2,
+                        width: inner.width,
+                        height: 2,
+                    };
+
+                    let instructions = Paragraph::new(vec![
+                        Line::from(vec![
+                            Span::styled("↑↓", Style::default().fg(self.theme.accent_primary).bold()),
+                            Span::raw(" scroll, "),
+                            Span::styled("Enter", Style::default().fg(self.theme.accent_success).bold()),
+                            Span::raw(" to import, "),
+                            Span::styled("Esc", Style::default().fg(self.theme.accent_warning).bold()),
+                            Span::raw(" to go back"),
+                        ])
+                    ])
+                    .style(Style::default().fg(self.theme.fg_secondary));
+
+                    f.render_widget(instructions, instructions_area);
+                }
+            }
+            ImportExportMode::Execute => {
+                let content = vec![
+                    Line::from(vec![
+                        Span::styled("Import Complete!", Style::default().fg(self.theme.accent_success).bold()),
+                    ]),
+                    Line::raw(""),
+                    Line::raw("The configuration has been imported successfully."),
+                    Line::raw("Press Enter or Esc to close this dialog."),
+                ];
+
+                let paragraph = Paragraph::new(content)
+                    .style(Style::default().fg(self.theme.fg_primary))
+                    .wrap(Wrap { trim: true })
+                    .alignment(Alignment::Center);
+
+                f.render_widget(paragraph, inner);
+            }
+            _ => {}
+        }
+    }
+
+    fn render_export_dialog(&self, f: &mut Frame, area: Rect) {
+        let popup_area = self.center_rect(80, 70, area);
+        f.render_widget(Clear, popup_area);
+
+        let block = Block::default()
+            .title(" Export Configuration ")
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .style(self.theme.popup_style());
+
+        f.render_widget(block, popup_area);
+
+        let inner = popup_area.inner(ratatui::layout::Margin {
+            vertical: 1,
+            horizontal: 2,
+        });
+
+        match self.import_export_mode {
+            ImportExportMode::SelectFormat => {
+                let content = vec![
+                    Line::from(vec![
+                        Span::styled("Select Export Format:", Style::default().fg(self.theme.fg_primary).bold()),
+                    ]),
+                    Line::raw(""),
+                    Line::from(vec![
+                        Span::styled("1. ", Style::default().fg(self.theme.accent_primary).bold()),
+                        Span::raw("Hyprland Configuration (.conf) - Standard format"),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("2. ", Style::default().fg(self.theme.accent_primary).bold()),
+                        Span::raw("JSON (.json) - Structured data format"),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("3. ", Style::default().fg(self.theme.accent_primary).bold()),
+                        Span::raw("TOML (.toml) - Human-readable configuration"),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("4. ", Style::default().fg(self.theme.accent_primary).bold()),
+                        Span::raw("YAML (.yaml) - Clean, indented format"),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("5. ", Style::default().fg(self.theme.accent_primary).bold()),
+                        Span::raw("R-Hyprconfig (.rhypr) - Native format with full features"),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("6. ", Style::default().fg(self.theme.accent_primary).bold()),
+                        Span::raw("NixOS Module (.nix) - Declarative configuration"),
+                    ]),
+                    Line::raw(""),
+                    Line::from(vec![
+                        Span::styled("Selected: ", Style::default().fg(self.theme.fg_secondary)),
+                        Span::styled(
+                            format!("{:?}", self.selected_export_format),
+                            Style::default().fg(self.theme.accent_info).bold(),
+                        ),
+                    ]),
+                ];
+
+                let paragraph = Paragraph::new(content)
+                    .style(Style::default().fg(self.theme.fg_primary))
+                    .wrap(Wrap { trim: true });
+
+                f.render_widget(paragraph, inner);
+            }
+            ImportExportMode::Preview => {
+                if let Some(preview_text) = &self.export_preview {
+                    let content: Vec<Line> = preview_text
+                        .lines()
+                        .skip(self.import_export_scroll)
+                        .take(inner.height as usize - 3)
+                        .map(|line| Line::raw(line))
+                        .collect();
+
+                    let paragraph = Paragraph::new(content)
+                        .style(Style::default().fg(self.theme.fg_primary))
+                        .wrap(Wrap { trim: true });
+
+                    f.render_widget(paragraph, inner);
+
+                    // Add scroll instructions
+                    let instructions_area = Rect {
+                        x: inner.x,
+                        y: inner.bottom() - 2,
+                        width: inner.width,
+                        height: 2,
+                    };
+
+                    let instructions = Paragraph::new(vec![
+                        Line::from(vec![
+                            Span::styled("↑↓", Style::default().fg(self.theme.accent_primary).bold()),
+                            Span::raw(" scroll, "),
+                            Span::styled("Enter", Style::default().fg(self.theme.accent_success).bold()),
+                            Span::raw(" to export, "),
+                            Span::styled("Esc", Style::default().fg(self.theme.accent_warning).bold()),
+                            Span::raw(" to go back"),
+                        ])
+                    ])
+                    .style(Style::default().fg(self.theme.fg_secondary));
+
+                    f.render_widget(instructions, instructions_area);
+                }
+            }
+            ImportExportMode::Execute => {
+                let content = vec![
+                    Line::from(vec![
+                        Span::styled("Export Complete!", Style::default().fg(self.theme.accent_success).bold()),
+                    ]),
+                    Line::raw(""),
+                    Line::raw("The configuration has been exported successfully."),
+                    Line::raw("Press Enter or Esc to close this dialog."),
+                ];
+
+                let paragraph = Paragraph::new(content)
+                    .style(Style::default().fg(self.theme.fg_primary))
+                    .wrap(Wrap { trim: true })
+                    .alignment(Alignment::Center);
+
+                f.render_widget(paragraph, inner);
+            }
+            _ => {}
+        }
+    }
+
     // Real-time preview functionality
     pub fn toggle_preview_mode(&mut self) {
         self.preview_mode = !self.preview_mode;
@@ -4879,5 +5313,25 @@ impl UI {
             }
         }
         None
+    }
+
+    fn center_rect(&self, percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+        let popup_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Percentage((100 - percent_y) / 2),
+                Constraint::Percentage(percent_y),
+                Constraint::Percentage((100 - percent_y) / 2),
+            ])
+            .split(r);
+
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage((100 - percent_x) / 2),
+                Constraint::Percentage(percent_x),
+                Constraint::Percentage((100 - percent_x) / 2),
+            ])
+            .split(popup_layout[1])[1]
     }
 }

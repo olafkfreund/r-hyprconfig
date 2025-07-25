@@ -5,6 +5,8 @@ use std::sync::{Mutex, OnceLock};
 
 use super::distribution::{DistributionDetector, DistributionInfo, DistributionType};
 
+// Allow dead code for path management functionality that will be used by TUI in future
+#[allow(dead_code)]
 /// Configuration for different types of paths
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PathConfiguration {

@@ -32,6 +32,8 @@ pub enum FocusedPanel {
     WindowRules,
     LayerRules,
     Misc,
+    Import,
+    Export,
 }
 
 impl FocusedPanel {
@@ -45,13 +47,15 @@ impl FocusedPanel {
             FocusedPanel::Binds => FocusedPanel::WindowRules,
             FocusedPanel::WindowRules => FocusedPanel::LayerRules,
             FocusedPanel::LayerRules => FocusedPanel::Misc,
-            FocusedPanel::Misc => FocusedPanel::General,
+            FocusedPanel::Misc => FocusedPanel::Import,
+            FocusedPanel::Import => FocusedPanel::Export,
+            FocusedPanel::Export => FocusedPanel::General,
         }
     }
 
     pub fn previous(self) -> Self {
         match self {
-            FocusedPanel::General => FocusedPanel::Misc,
+            FocusedPanel::General => FocusedPanel::Export,
             FocusedPanel::Input => FocusedPanel::General,
             FocusedPanel::Decoration => FocusedPanel::Input,
             FocusedPanel::Animations => FocusedPanel::Decoration,
@@ -60,6 +64,8 @@ impl FocusedPanel {
             FocusedPanel::WindowRules => FocusedPanel::Binds,
             FocusedPanel::LayerRules => FocusedPanel::WindowRules,
             FocusedPanel::Misc => FocusedPanel::LayerRules,
+            FocusedPanel::Import => FocusedPanel::Misc,
+            FocusedPanel::Export => FocusedPanel::Import,
         }
     }
 
@@ -75,6 +81,8 @@ impl FocusedPanel {
             FocusedPanel::WindowRules => "Window Rules",
             FocusedPanel::LayerRules => "Layer Rules",
             FocusedPanel::Misc => "Misc",
+            FocusedPanel::Import => "Import",
+            FocusedPanel::Export => "Export",
         }
     }
 }
@@ -205,6 +213,14 @@ impl App {
 
     async fn handle_key_event(&mut self, key: KeyCode) -> Result<()> {
         // Handle popup states first
+        if self.ui.show_import_dialog {
+            return self.handle_import_dialog_key(key).await;
+        }
+
+        if self.ui.show_export_dialog {
+            return self.handle_export_dialog_key(key).await;
+        }
+
         if self.ui.show_nixos_export_dialog {
             return self.handle_nixos_export_dialog_key(key).await;
         }
@@ -299,22 +315,16 @@ impl App {
                 self.ui.popup_message = format!("Theme changed to: {}", self.config.theme);
             }
             KeyCode::Char('e') | KeyCode::Char('E') => {
-                self.export_config().await;
+                self.show_export_dialog().await;
             }
             KeyCode::Char('m') | KeyCode::Char('M') => {
-                self.import_config().await;
+                self.show_import_dialog().await;
             }
             KeyCode::F(1) | KeyCode::Char('?') => {
                 self.ui.toggle_help();
             }
             KeyCode::Char('n') | KeyCode::Char('N') => {
-                if self.config.nixos_mode {
-                    self.show_nixos_export_dialog().await;
-                } else {
-                    self.ui.show_popup = true;
-                    self.ui.popup_message =
-                        "NixOS export is only available on NixOS systems".to_string();
-                }
+                self.show_enhanced_preview().await;
             }
             KeyCode::Char('p') | KeyCode::Char('P') => {
                 self.show_setting_preview().await;
@@ -896,32 +906,6 @@ impl App {
         Ok(())
     }
 
-    async fn export_config(&mut self) {
-        match self.export_config_to_file().await {
-            Ok(path) => {
-                self.ui.show_popup = true;
-                self.ui.popup_message = format!("Configuration exported to: {path}");
-            }
-            Err(e) => {
-                self.ui.show_popup = true;
-                self.ui.popup_message = format!("Export failed: {e}");
-            }
-        }
-    }
-
-    async fn import_config(&mut self) {
-        match self.import_config_from_file().await {
-            Ok(imported_count) => {
-                self.ui.show_popup = true;
-                self.ui.popup_message =
-                    format!("Imported {imported_count} configuration items successfully!");
-            }
-            Err(e) => {
-                self.ui.show_popup = true;
-                self.ui.popup_message = format!("Import failed: {e}");
-            }
-        }
-    }
 
     async fn export_config_to_file(&mut self) -> Result<String> {
         use chrono::Utc;
@@ -1100,17 +1084,6 @@ impl App {
         Ok(imported_count)
     }
 
-    async fn show_nixos_export_dialog(&mut self) {
-        // Initialize the dialog with current config type or default
-        if let Some(nixos_config_type) = &self.config.nixos_config_type {
-            self.ui.nixos_export_config_type = nixos_config_type.clone();
-        }
-
-        // Generate preview
-        self.update_nixos_export_preview().await;
-
-        self.ui.show_nixos_export_dialog = true;
-    }
 
     async fn update_nixos_export_preview(&mut self) {
         use crate::nixos::ConfigConverter;
@@ -1389,6 +1362,8 @@ impl App {
             FocusedPanel::WindowRules => self.ui.window_rules_list_state.selected(),
             FocusedPanel::LayerRules => self.ui.layer_rules_list_state.selected(),
             FocusedPanel::Misc => self.ui.misc_list_state.selected(),
+            FocusedPanel::Import => self.ui.import_list_state.selected(),
+            FocusedPanel::Export => self.ui.export_list_state.selected(),
         };
 
         if let Some(index) = selected_index {
@@ -1671,5 +1646,415 @@ impl App {
         }
 
         Ok(())
+    }
+
+    // New import/export dialog handlers
+    async fn show_import_dialog(&mut self) {
+        self.ui.show_import_dialog = true;
+        self.ui.import_export_mode = crate::ui::ImportExportMode::SelectSource;
+        self.ui.selected_import_source = crate::ui::ImportSourceType::LocalFile;
+        self.ui.import_preview = None;
+        self.ui.import_list_state.select(Some(0));
+    }
+
+    async fn show_export_dialog(&mut self) {
+        self.ui.show_export_dialog = true;
+        self.ui.import_export_mode = crate::ui::ImportExportMode::SelectFormat;
+        self.ui.selected_export_format = crate::ui::ExportFormatType::HyprlandConf;
+        self.ui.export_preview = None;
+        self.ui.export_list_state.select(Some(0));
+    }
+
+    async fn handle_import_dialog_key(&mut self, key: KeyCode) -> Result<()> {
+        use crate::ui::{ImportExportMode, ImportSourceType};
+        
+        match self.ui.import_export_mode {
+            ImportExportMode::SelectSource => {
+                match key {
+                    KeyCode::Char('1') => {
+                        self.ui.selected_import_source = ImportSourceType::LocalFile;
+                        self.ui.import_export_mode = ImportExportMode::Preview;
+                        self.generate_import_preview().await;
+                    }
+                    KeyCode::Char('2') => {
+                        self.ui.selected_import_source = ImportSourceType::LocalFolder;
+                        self.ui.import_export_mode = ImportExportMode::Preview;
+                        self.generate_import_preview().await;
+                    }
+                    KeyCode::Char('3') => {
+                        self.ui.selected_import_source = ImportSourceType::GitHubRepository;
+                        self.ui.import_export_mode = ImportExportMode::Preview;
+                        self.generate_import_preview().await;
+                    }
+                    KeyCode::Char('4') => {
+                        self.ui.selected_import_source = ImportSourceType::UrlDownload;
+                        self.ui.import_export_mode = ImportExportMode::Preview;
+                        self.generate_import_preview().await;
+                    }
+                    KeyCode::Esc => {
+                        self.ui.show_import_dialog = false;
+                        self.ui.import_preview = None;
+                    }
+                    _ => {}
+                }
+            }
+            ImportExportMode::Preview => {
+                match key {
+                    KeyCode::Enter => {
+                        self.ui.import_export_mode = ImportExportMode::Execute;
+                        self.execute_import().await;
+                    }
+                    KeyCode::Esc => {
+                        self.ui.import_export_mode = ImportExportMode::SelectSource;
+                        self.ui.import_preview = None;
+                    }
+                    KeyCode::Up => {
+                        if self.ui.import_export_scroll > 0 {
+                            self.ui.import_export_scroll -= 1;
+                        }
+                    }
+                    KeyCode::Down => {
+                        self.ui.import_export_scroll += 1;
+                    }
+                    _ => {}
+                }
+            }
+            ImportExportMode::Execute => {
+                match key {
+                    KeyCode::Enter | KeyCode::Esc => {
+                        self.ui.show_import_dialog = false;
+                        self.ui.import_preview = None;
+                        self.ui.import_export_scroll = 0;
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    async fn handle_export_dialog_key(&mut self, key: KeyCode) -> Result<()> {
+        use crate::ui::{ImportExportMode, ExportFormatType};
+        
+        match self.ui.import_export_mode {
+            ImportExportMode::SelectFormat => {
+                match key {
+                    KeyCode::Char('1') => {
+                        self.ui.selected_export_format = ExportFormatType::HyprlandConf;
+                        self.ui.import_export_mode = ImportExportMode::Preview;
+                        self.generate_export_preview().await;
+                    }
+                    KeyCode::Char('2') => {
+                        self.ui.selected_export_format = ExportFormatType::Json;
+                        self.ui.import_export_mode = ImportExportMode::Preview;
+                        self.generate_export_preview().await;
+                    }
+                    KeyCode::Char('3') => {
+                        self.ui.selected_export_format = ExportFormatType::Toml;
+                        self.ui.import_export_mode = ImportExportMode::Preview;
+                        self.generate_export_preview().await;
+                    }
+                    KeyCode::Char('4') => {
+                        self.ui.selected_export_format = ExportFormatType::Yaml;
+                        self.ui.import_export_mode = ImportExportMode::Preview;
+                        self.generate_export_preview().await;
+                    }
+                    KeyCode::Char('5') => {
+                        self.ui.selected_export_format = ExportFormatType::RHyprConfig;
+                        self.ui.import_export_mode = ImportExportMode::Preview;
+                        self.generate_export_preview().await;
+                    }
+                    KeyCode::Char('6') => {
+                        self.ui.selected_export_format = ExportFormatType::NixOS;
+                        if self.config.nixos_mode {
+                            self.ui.import_export_mode = ImportExportMode::Preview;
+                            self.generate_export_preview().await;
+                        } else {
+                            self.ui.show_popup = true;
+                            self.ui.popup_message = "NixOS export is only available on NixOS systems".to_string();
+                        }
+                    }
+                    KeyCode::Esc => {
+                        self.ui.show_export_dialog = false;
+                        self.ui.export_preview = None;
+                    }
+                    _ => {}
+                }
+            }
+            ImportExportMode::Preview => {
+                match key {
+                    KeyCode::Enter => {
+                        self.ui.import_export_mode = ImportExportMode::Execute;
+                        self.execute_export().await;
+                    }
+                    KeyCode::Esc => {
+                        self.ui.import_export_mode = ImportExportMode::SelectFormat;
+                        self.ui.export_preview = None;
+                    }
+                    KeyCode::Up => {
+                        if self.ui.import_export_scroll > 0 {
+                            self.ui.import_export_scroll -= 1;
+                        }
+                    }
+                    KeyCode::Down => {
+                        self.ui.import_export_scroll += 1;
+                    }
+                    _ => {}
+                }
+            }
+            ImportExportMode::Execute => {
+                match key {
+                    KeyCode::Enter | KeyCode::Esc => {
+                        self.ui.show_export_dialog = false;
+                        self.ui.export_preview = None;
+                        self.ui.import_export_scroll = 0;
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    async fn show_enhanced_preview(&mut self) {
+        // Enhanced preview that shows current setting details, not just NixOS export
+        let panel = self.focused_panel;
+        let selected_index = match panel {
+            FocusedPanel::General => self.ui.general_list_state.selected(),
+            FocusedPanel::Input => self.ui.input_list_state.selected(),
+            FocusedPanel::Decoration => self.ui.decoration_list_state.selected(),
+            FocusedPanel::Animations => self.ui.animations_list_state.selected(),
+            FocusedPanel::Gestures => self.ui.gestures_list_state.selected(),
+            FocusedPanel::Binds => self.ui.binds_list_state.selected(),
+            FocusedPanel::WindowRules => self.ui.window_rules_list_state.selected(),
+            FocusedPanel::LayerRules => self.ui.layer_rules_list_state.selected(),
+            FocusedPanel::Misc => self.ui.misc_list_state.selected(),
+            FocusedPanel::Import => {
+                // Show import dialog instead
+                self.show_import_dialog().await;
+                return;
+            }
+            FocusedPanel::Export => {
+                // Show export dialog instead
+                self.show_export_dialog().await;
+                return;
+            }
+        };
+
+        if let Some(index) = selected_index {
+            if let Some(config_items) = self.ui.config_items.get(&panel) {
+                if let Some(item) = config_items.get(index) {
+                    let setting_name = format!("{}: {}", panel.as_str(), item.key);
+                    let before_text = format!(
+                        "Current Value: {}\n\nDescription:\n{}\n\nData Type: {:?}\n\nSuggestions: {}",
+                        item.value,
+                        item.description,
+                        item.data_type,
+                        item.suggestions.join(", ")
+                    );
+                    
+                    // Generate preview of what the setting would look like with a different value
+                    let after_text = self.generate_setting_preview_text(item);
+                    
+                    self.ui.show_setting_preview(setting_name, before_text, after_text);
+                } else {
+                    self.ui.show_popup = true;
+                    self.ui.popup_message = "No setting selected for preview".to_string();
+                }
+            } else {
+                self.ui.show_popup = true;
+                self.ui.popup_message = "No configuration items available for preview".to_string();
+            }
+        } else {
+            self.ui.show_popup = true;
+            self.ui.popup_message = "No setting selected. Use ↑↓ to select a setting first".to_string();
+        }
+    }
+
+    fn generate_setting_preview_text(&self, item: &crate::ui::ConfigItem) -> String {
+        match &item.data_type {
+            crate::ui::ConfigDataType::Boolean => {
+                let new_value = if item.value == "true" { "false" } else { "true" };
+                format!("Preview Value: {}\n\nThis would toggle the current boolean setting.", new_value)
+            }
+            crate::ui::ConfigDataType::Integer { min, max } => {
+                let current_val = item.value.parse::<i32>().unwrap_or(0);
+                let new_val = match (min, max) {
+                    (Some(min_val), Some(max_val)) => (current_val + 5).clamp(*min_val, *max_val),
+                    _ => current_val + 5,
+                };
+                format!("Preview Value: {}\n\nThis would increase the current value by 5 (within valid range).", new_val)
+            }
+            crate::ui::ConfigDataType::Float { min, max } => {
+                let current_val = item.value.parse::<f32>().unwrap_or(0.0);
+                let new_val = match (min, max) {
+                    (Some(min_val), Some(max_val)) => (current_val + 0.1).clamp(*min_val, *max_val),
+                    _ => current_val + 0.1,
+                };
+                format!("Preview Value: {:.2}\n\nThis would increase the current value by 0.1 (within valid range).", new_val)
+            }
+            crate::ui::ConfigDataType::Keyword { options } => {
+                let next_option = options.iter()
+                    .find(|&opt| opt != &item.value)
+                    .unwrap_or(&options[0]);
+                format!("Preview Value: {}\n\nThis would cycle to the next available option.\nAll options: {}", 
+                    next_option, options.join(", "))
+            }
+            crate::ui::ConfigDataType::Color => {
+                "Preview Value: #FF5555\n\nThis would set a new color value. Use the color picker to select.".to_string()
+            }
+            crate::ui::ConfigDataType::String => {
+                format!("Preview Value: {} (modified)\n\nThis would append '(modified)' to the current string value.", item.value)
+            }
+        }
+    }
+
+    async fn generate_import_preview(&mut self) {
+        use crate::ui::ImportSourceType;
+        
+        let preview_text = match self.ui.selected_import_source {
+            ImportSourceType::LocalFile => {
+                "Import from Local File\n\n\
+                This will:\n\
+                • Open a file browser to select a Hyprland config file\n\
+                • Parse and validate the configuration\n\
+                • Show a preview of what will be imported\n\
+                • Allow you to choose which settings to import\n\n\
+                Supported formats: .conf, .toml, .json, .yaml".to_string()
+            }
+            ImportSourceType::LocalFolder => {
+                "Import from Local Folder\n\n\
+                This will:\n\
+                • Scan a folder for Hyprland configuration files\n\
+                • Detect and parse all compatible files\n\
+                • Show a comprehensive preview of all settings\n\
+                • Allow selective import of individual files or settings".to_string()
+            }
+            ImportSourceType::GitHubRepository => {
+                "Import from GitHub Repository\n\n\
+                This will:\n\
+                • Connect to a GitHub repository\n\
+                • Download and analyze Hyprland configurations\n\
+                • Parse dotfiles and config repositories\n\
+                • Import compatible settings and assets\n\n\
+                Example: https://github.com/user/dotfiles".to_string()
+            }
+            ImportSourceType::UrlDownload => {
+                "Import from URL\n\n\
+                This will:\n\
+                • Download configuration from a direct URL\n\
+                • Validate and parse the content\n\
+                • Show preview before importing\n\
+                • Support for pastebin, gists, and direct links".to_string()
+            }
+        };
+        
+        self.ui.import_preview = Some(preview_text);
+    }
+
+    async fn generate_export_preview(&mut self) {
+        use crate::ui::ExportFormatType;
+        
+        let config_changes = self.ui.collect_all_config_changes();
+        let keybinds = self.ui.collect_keybinds();
+        let window_rules = self.ui.collect_window_rules();
+        let layer_rules = self.ui.collect_layer_rules();
+        
+        let preview_text = match self.ui.selected_export_format {
+            ExportFormatType::HyprlandConf => {
+                format!("Export as Hyprland Configuration\n\n\
+                This will create a standard hyprland.conf file with:\n\
+                • {} configuration options\n\
+                • {} keybinds\n\
+                • {} window rules\n\
+                • {} layer rules\n\n\
+                Output: ~/.config/r-hyprconfig/exports/hyprland_export_[timestamp].conf",
+                config_changes.len(), keybinds.len(), window_rules.len(), layer_rules.len())
+            }
+            ExportFormatType::Json => {
+                format!("Export as JSON\n\n\
+                This will create a structured JSON file with:\n\
+                • Hierarchical configuration structure\n\
+                • Easy parsing for other tools\n\
+                • Metadata and versioning information\n\
+                • {} total configuration items\n\n\
+                Output: ~/.config/r-hyprconfig/exports/config_export_[timestamp].json",
+                config_changes.len() + keybinds.len() + window_rules.len() + layer_rules.len())
+            }
+            ExportFormatType::Toml => {
+                format!("Export as TOML\n\n\
+                This will create a TOML configuration file with:\n\
+                • Human-readable format\n\
+                • Section-based organization\n\
+                • Easy manual editing\n\
+                • {} total configuration items\n\n\
+                Output: ~/.config/r-hyprconfig/exports/config_export_[timestamp].toml",
+                config_changes.len() + keybinds.len() + window_rules.len() + layer_rules.len())
+            }
+            ExportFormatType::Yaml => {
+                format!("Export as YAML\n\n\
+                This will create a YAML configuration file with:\n\
+                • Clean, indented structure\n\
+                • Comments and documentation\n\
+                • Machine and human readable\n\
+                • {} total configuration items\n\n\
+                Output: ~/.config/r-hyprconfig/exports/config_export_[timestamp].yaml",
+                config_changes.len() + keybinds.len() + window_rules.len() + layer_rules.len())
+            }
+            ExportFormatType::RHyprConfig => {
+                format!("Export as R-Hyprconfig Format\n\n\
+                This will create an r-hyprconfig native format with:\n\
+                • Full feature compatibility\n\
+                • Theme and UI preferences\n\
+                • Import/export metadata\n\
+                • {} total configuration items\n\n\
+                Output: ~/.config/r-hyprconfig/exports/rhypr_export_[timestamp].rhypr",
+                config_changes.len() + keybinds.len() + window_rules.len() + layer_rules.len())
+            }
+            ExportFormatType::NixOS => {
+                format!("Export as NixOS Module\n\n\
+                This will create a NixOS configuration module with:\n\
+                • Declarative configuration\n\
+                • Home Manager integration\n\
+                • Reproducible builds\n\
+                • {} total configuration items\n\n\
+                Output: ~/.config/r-hyprconfig/nixos-exports/hyprland_[timestamp].nix",
+                config_changes.len() + keybinds.len() + window_rules.len() + layer_rules.len())
+            }
+        };
+        
+        self.ui.export_preview = Some(preview_text);
+    }
+
+    async fn execute_import(&mut self) {
+        // Placeholder implementation - integrate with the existing import system
+        match self.import_config_from_file().await {
+            Ok(imported_count) => {
+                self.ui.show_popup = true;
+                self.ui.popup_message = format!("Imported {} configuration items successfully!", imported_count);
+            }
+            Err(e) => {
+                self.ui.show_popup = true;
+                self.ui.popup_message = format!("Import failed: {}", e);
+            }
+        }
+        self.ui.show_import_dialog = false;
+    }
+
+    async fn execute_export(&mut self) {
+        // Placeholder implementation - integrate with the existing export system  
+        match self.export_config_to_file().await {
+            Ok(path) => {
+                self.ui.show_popup = true;
+                self.ui.popup_message = format!("Configuration exported to: {}", path);
+            }
+            Err(e) => {
+                self.ui.show_popup = true;
+                self.ui.popup_message = format!("Export failed: {}", e);
+            }
+        }
+        self.ui.show_export_dialog = false;
     }
 }

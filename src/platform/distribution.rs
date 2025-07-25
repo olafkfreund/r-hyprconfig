@@ -5,6 +5,8 @@ use std::fs;
 use std::path::Path;
 use std::sync::Mutex;
 
+// Allow dead code for distribution detection functionality that will be used by TUI in future
+#[allow(dead_code)]
 /// Supported Linux distributions
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DistributionType {
