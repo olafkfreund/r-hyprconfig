@@ -214,6 +214,37 @@ impl HyprCtl {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
+        
+        // Parse the structured output from hyprctl getoption
+        // Example output:
+        // int: 2
+        // set: true
+        // 
+        // or:
+        // custom type: 2 2 2 2
+        // set: true
+        
+        for line in stdout.lines() {
+            let line = line.trim();
+            if line.starts_with("int: ") {
+                return Ok(line.strip_prefix("int: ").unwrap_or("").to_string());
+            } else if line.starts_with("float: ") {
+                return Ok(line.strip_prefix("float: ").unwrap_or("").to_string());
+            } else if line.starts_with("str: ") {
+                return Ok(line.strip_prefix("str: ").unwrap_or("").to_string());
+            } else if line.starts_with("custom type: ") {
+                return Ok(line.strip_prefix("custom type: ").unwrap_or("").to_string());
+            } else if line.starts_with("vec2: ") {
+                return Ok(line.strip_prefix("vec2: ").unwrap_or("").to_string());
+            } else if line.starts_with("color: ") {
+                return Ok(line.strip_prefix("color: ").unwrap_or("").to_string());
+            } else if !line.starts_with("set: ") && !line.is_empty() {
+                // Fallback: if no type prefix found, return the first non-empty, non-"set:" line
+                return Ok(line.to_string());
+            }
+        }
+        
+        // Fallback to original behavior
         Ok(stdout.trim().to_string())
     }
 
