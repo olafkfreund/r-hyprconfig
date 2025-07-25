@@ -49,23 +49,62 @@ jobs:
     - name: Install packaging tools
       run: |
         if [ "${{ matrix.package_type }}" = "deb" ]; then
-          cargo install cargo-deb
+          # Install fpm for cross-platform package building
+          sudo apt-get update
+          sudo apt-get install -y ruby ruby-dev rubygems build-essential
+          sudo gem install --no-document fpm
         elif [ "${{ matrix.package_type }}" = "rpm" ]; then
-          sudo apt-get install -y rpm
-          cargo install cargo-generate-rpm
+          sudo apt-get update
+          sudo apt-get install -y ruby ruby-dev rubygems build-essential rpm
+          sudo gem install --no-document fpm
         fi
 
     - name: Build Debian package
       if: matrix.package_type == 'deb'
       run: |
-        cargo deb --target ${{ matrix.target }} --no-build
-        mv target/${{ matrix.target }}/debian/*.deb ./r-hyprconfig_${{ github.ref_name }}_${{ matrix.arch }}.deb
+        # Create a temporary directory structure
+        mkdir -p pkg/usr/local/bin
+        cp target/${{ matrix.target }}/release/r-hyprconfig pkg/usr/local/bin/
+        chmod +x pkg/usr/local/bin/r-hyprconfig
+        
+        # Build .deb package with fpm
+        fpm -s dir -t deb \
+          -n r-hyprconfig \
+          -v ${{ github.ref_name }} \
+          --description "A modern TUI for visually configuring Hyprland" \
+          --url "https://github.com/olafkfreund/r-hyprconfig" \
+          --license "MIT" \
+          --maintainer "olafkfreund" \
+          --architecture ${{ matrix.arch }} \
+          --deb-priority optional \
+          --deb-field 'Section: utils' \
+          -C pkg \
+          usr/local/bin/r-hyprconfig=/usr/local/bin/r-hyprconfig
+        
+        mv *.deb r-hyprconfig_${{ github.ref_name }}_${{ matrix.arch }}.deb
 
     - name: Build RPM package
       if: matrix.package_type == 'rpm'
       run: |
-        cargo generate-rpm --target ${{ matrix.target }}
-        mv target/${{ matrix.target }}/generate-rpm/*.rpm ./r-hyprconfig-${{ github.ref_name }}-1.${{ matrix.arch }}.rpm
+        # Create a temporary directory structure
+        mkdir -p pkg/usr/local/bin
+        cp target/${{ matrix.target }}/release/r-hyprconfig pkg/usr/local/bin/
+        chmod +x pkg/usr/local/bin/r-hyprconfig
+        
+        # Build .rpm package with fpm
+        fpm -s dir -t rpm \
+          -n r-hyprconfig \
+          -v ${{ github.ref_name }} \
+          --description "A modern TUI for visually configuring Hyprland" \
+          --url "https://github.com/olafkfreund/r-hyprconfig" \
+          --license "MIT" \
+          --maintainer "olafkfreund" \
+          --architecture ${{ matrix.arch }} \
+          --rpm-summary "A modern TUI for visually configuring Hyprland" \
+          -C pkg \
+          usr/local/bin/r-hyprconfig=/usr/local/bin/r-hyprconfig
+        
+        mv *.rpm r-hyprconfig-${{ github.ref_name }}-1.${{ matrix.arch }}.rpm
 
     - name: Upload package artifacts
       uses: actions/upload-artifact@v4
