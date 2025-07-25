@@ -390,23 +390,113 @@ impl HyprCtl {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let mut binds = Vec::new();
 
-        for line in stdout.lines() {
-            let line = line.trim();
-            if line.is_empty() {
-                continue;
+        // Parse the structured output format
+        let lines: Vec<&str> = stdout.lines().collect();
+        let mut i = 0;
+        
+        while i < lines.len() {
+            let line = lines[i].trim();
+            
+            // Look for bind type lines (bind, binde, bindm, bindl, etc.)
+            if line.starts_with("bind") && !line.contains(':') {
+                if let Some(keybind) = Self::parse_structured_bind(&lines, i) {
+                    binds.push(keybind);
+                }
             }
-
-            // Parse hyprctl binds output format
-            // Example: "bind: SUPER + Q -> exec [kitty]"
-            if let Some(keybind) = Self::parse_bind_line(line) {
-                binds.push(keybind);
-            }
+            i += 1;
         }
 
         Ok(binds)
     }
 
+    fn parse_structured_bind(lines: &[&str], start_index: usize) -> Option<HyprlandKeybind> {
+        // Parse the structured hyprctl binds output format:
+        // bind
+        //     modmask: 64
+        //     submap: 
+        //     key: N
+        //     keycode: 0
+        //     catchall: false
+        //     description: 
+        //     dispatcher: exec
+        //     arg: swaync-client -t -sw
+
+        if start_index >= lines.len() {
+            return None;
+        }
+
+        let bind_type = lines[start_index].trim().to_string();
+        let mut modmask: Option<u32> = None;
+        let mut key: Option<String> = None;
+        let mut dispatcher: Option<String> = None;
+        let mut arg: Option<String> = None;
+
+        // Parse the following lines until we hit the next bind or end of output
+        let mut i = start_index + 1;
+        while i < lines.len() {
+            let line = lines[i].trim();
+            
+            // Stop if we hit another bind definition
+            if line.starts_with("bind") && !line.contains(':') {
+                break;
+            }
+            
+            // Parse key-value pairs
+            if let Some((key_name, value)) = line.split_once(':') {
+                let key_name = key_name.trim();
+                let value = value.trim();
+                
+                match key_name {
+                    "modmask" => {
+                        if let Ok(mask) = value.parse::<u32>() {
+                            modmask = Some(mask);
+                        }
+                    }
+                    "key" => {
+                        if !value.is_empty() {
+                            key = Some(value.to_string());
+                        }
+                    }
+                    "dispatcher" => {
+                        if !value.is_empty() {
+                            dispatcher = Some(value.to_string());
+                        }
+                    }
+                    "arg" => {
+                        if !value.is_empty() {
+                            arg = Some(value.to_string());
+                        }
+                    }
+                    _ => {} // Ignore other fields
+                }
+            }
+            
+            i += 1;
+        }
+
+        // Create the keybind if we have the required fields
+        if let (Some(key_val), Some(disp)) = (key, dispatcher) {
+            let modifiers = if let Some(mask) = modmask {
+                Self::parse_modifiers(&mask.to_string())
+            } else {
+                vec![]
+            };
+
+            Some(HyprlandKeybind {
+                modifiers,
+                key: key_val,
+                dispatcher: disp,
+                args: arg,
+                bind_type,
+            })
+        } else {
+            None
+        }
+    }
+
+    #[allow(dead_code)]
     fn parse_bind_line(line: &str) -> Option<HyprlandKeybind> {
+        // Legacy parser - kept for backwards compatibility
         // hyprctl binds output format: "modmask,key -> dispatcher [arg]"
         // Example: "64,q -> exec [kitty]"
 
