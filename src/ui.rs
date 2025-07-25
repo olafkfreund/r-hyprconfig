@@ -4768,12 +4768,20 @@ impl UI {
             return Ok(());
         }
 
+        // Get the hyprctl key for this configuration option
+        let hypr_key = self.get_hyprctl_key(&self.current_tab, key);
+        if hypr_key.is_none() {
+            // No hyprctl mapping available for this setting
+            return Ok(());
+        }
+        let hypr_key = hypr_key.unwrap();
+
         let now = std::time::Instant::now();
         
         // Store the original value if this is the first preview change
         if self.preview_original_value.is_none() {
-            // Get current value from hyprctl
-            match hyprctl.get_option(key).await {
+            // Get current value from hyprctl using the proper hyprctl key
+            match hyprctl.get_option(&hypr_key).await {
                 Ok(current) => {
                     self.preview_original_value = Some(current);
                 }
@@ -4786,8 +4794,8 @@ impl UI {
             }
         }
 
-        // Set up debounced preview change
-        self.pending_preview_change = Some((key.to_string(), value.to_string()));
+        // Set up debounced preview change using the hyprctl key
+        self.pending_preview_change = Some((hypr_key, value.to_string()));
         self.last_preview_time = now;
 
         Ok(())

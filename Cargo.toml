@@ -1,6 +1,6 @@
 [package]
 name = "r-hyprconfig"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 description = "A modern TUI for managing Hyprland configuration"
 license = "MIT"
