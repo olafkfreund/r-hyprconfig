@@ -142,6 +142,13 @@ pub struct UI {
     // Theme
     pub theme: crate::theme::Theme,
 
+    // Real-time preview functionality
+    pub preview_mode: bool,
+    pub preview_debounce_delay: std::time::Duration,
+    pub last_preview_time: std::time::Instant,
+    pub pending_preview_change: Option<(String, String)>, // (key, value)
+    pub preview_original_value: Option<String>, // Store original value for rollback
+
     // Lazy loading / pagination support
     pub page_size: usize,
     pub current_page: std::collections::HashMap<FocusedPanel, usize>,
@@ -222,6 +229,13 @@ impl UI {
 
             // Theme
             theme: crate::theme::Theme::default(),
+
+            // Real-time preview functionality
+            preview_mode: false, // Start with preview mode disabled
+            preview_debounce_delay: std::time::Duration::from_millis(250), // 250ms debounce for previews
+            last_preview_time: std::time::Instant::now(),
+            pending_preview_change: None,
+            preview_original_value: None,
 
             // Lazy loading / pagination
             page_size: 50, // Show 50 items per page for smooth performance
@@ -1987,6 +2001,21 @@ impl UI {
             }
         }
 
+        // Add live preview status indicator
+        let preview_status = self.get_preview_status();
+        title_spans.push(Span::raw(" | "));
+        if self.preview_mode {
+            title_spans.push(Span::styled(
+                preview_status,
+                Style::default().fg(self.theme.accent_primary).bold(),
+            ));
+        } else {
+            title_spans.push(Span::styled(
+                preview_status,
+                Style::default().fg(self.theme.fg_muted),
+            ));
+        }
+
         let header_content = vec![
             Line::from(title_spans),
             Line::from(vec![
@@ -2354,6 +2383,9 @@ impl UI {
             Span::raw("• "),
             Span::styled("F1/?", self.theme.info_style().bold()),
             Span::styled(" Help ", Style::default().fg(self.theme.fg_muted)),
+            Span::raw("• "),
+            Span::styled("L", Style::default().fg(self.theme.accent_secondary).bold()),
+            Span::styled(" Live Preview ", Style::default().fg(self.theme.fg_muted)),
             Span::raw("• "),
             Span::styled("Q/Esc", self.theme.error_style().bold()),
             Span::styled(" Quit", Style::default().fg(self.theme.fg_muted)),
@@ -4710,5 +4742,134 @@ impl UI {
         let title_paragraph = Paragraph::new(title_content).alignment(Alignment::Center);
 
         f.render_widget(title_paragraph, title_area);
+    }
+
+    // Real-time preview functionality
+    pub fn toggle_preview_mode(&mut self) {
+        self.preview_mode = !self.preview_mode;
+        if !self.preview_mode {
+            // Clean up when disabling preview mode
+            self.pending_preview_change = None;
+            self.preview_original_value = None;
+        }
+    }
+
+    pub fn is_preview_mode(&self) -> bool {
+        self.preview_mode
+    }
+
+    pub async fn handle_preview_change(
+        &mut self,
+        key: &str,
+        value: &str,
+        hyprctl: &crate::hyprctl::HyprCtl,
+    ) -> anyhow::Result<()> {
+        if !self.preview_mode {
+            return Ok(());
+        }
+
+        let now = std::time::Instant::now();
+        
+        // Store the original value if this is the first preview change
+        if self.preview_original_value.is_none() {
+            // Get current value from hyprctl
+            match hyprctl.get_option(key).await {
+                Ok(current) => {
+                    self.preview_original_value = Some(current);
+                }
+                Err(_) => {
+                    // If we can't get the current value, store the value from UI
+                    if let Some(item) = self.get_config_item(key) {
+                        self.preview_original_value = Some(item.value.clone());
+                    }
+                }
+            }
+        }
+
+        // Set up debounced preview change
+        self.pending_preview_change = Some((key.to_string(), value.to_string()));
+        self.last_preview_time = now;
+
+        Ok(())
+    }
+
+    pub async fn apply_pending_preview(
+        &mut self,
+        hyprctl: &crate::hyprctl::HyprCtl,
+    ) -> anyhow::Result<()> {
+        if !self.preview_mode {
+            return Ok(());
+        }
+
+        let now = std::time::Instant::now();
+        
+        // Check if enough time has passed for debouncing
+        if now.duration_since(self.last_preview_time) >= self.preview_debounce_delay {
+            if let Some((key, value)) = &self.pending_preview_change {
+                // Apply the preview change via hyprctl
+                match hyprctl.set_option(key, value).await {
+                    Ok(_) => {
+                        // Success - clear pending change
+                        self.pending_preview_change = None;
+                    }
+                    Err(e) => {
+                        // Failed to apply - show error but don't clear pending change
+                        self.show_popup = true;
+                        self.popup_message = format!("Preview failed: {}", e);
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn cancel_preview(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> anyhow::Result<()> {
+        if let Some(original_value) = &self.preview_original_value {
+            if let Some((key, _)) = &self.pending_preview_change {
+                // Restore original value
+                if let Err(e) = hyprctl.set_option(key, original_value).await {
+                    self.show_popup = true;
+                    self.popup_message = format!("Failed to restore original value: {}", e);
+                }
+            }
+        }
+
+        // Clean up preview state
+        self.pending_preview_change = None;
+        self.preview_original_value = None;
+
+        Ok(())
+    }
+
+    pub fn has_pending_preview(&self) -> bool {
+        self.pending_preview_change.is_some()
+    }
+
+    pub fn get_preview_status(&self) -> String {
+        if !self.preview_mode {
+            return "Preview: OFF".to_string();
+        }
+
+        if self.has_pending_preview() {
+            let remaining = self.preview_debounce_delay
+                .saturating_sub(self.last_preview_time.elapsed());
+            if remaining > std::time::Duration::ZERO {
+                return format!("Preview: Pending ({:.1}s)", remaining.as_secs_f32());
+            } else {
+                return "Preview: Applying...".to_string();
+            }
+        }
+
+        "Preview: ON".to_string()
+    }
+
+    fn get_config_item(&self, key: &str) -> Option<&ConfigItem> {
+        for items in self.config_items.values() {
+            if let Some(item) = items.iter().find(|item| item.key == key) {
+                return Some(item);
+            }
+        }
+        None
     }
 }

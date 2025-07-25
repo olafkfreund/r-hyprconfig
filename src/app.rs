@@ -322,6 +322,16 @@ impl App {
             KeyCode::Char('b') | KeyCode::Char('B') => {
                 self.show_batch_dialog().await;
             }
+            KeyCode::Char('l') | KeyCode::Char('L') => {
+                self.ui.toggle_preview_mode();
+                let status = if self.ui.is_preview_mode() {
+                    "Live preview enabled! Changes will be applied immediately."
+                } else {
+                    "Live preview disabled. Press Enter to apply changes."
+                };
+                self.ui.show_popup = true;
+                self.ui.popup_message = status.to_string();
+            }
             _ => {}
         }
         Ok(())
@@ -405,6 +415,14 @@ impl App {
     async fn handle_edit_key(&mut self, key: KeyCode) -> Result<()> {
         use crate::ui::EditMode;
 
+        // Check preview mode and get editing key before match to avoid borrowing issues
+        let preview_enabled = self.ui.is_preview_mode();
+        let editing_key = self.ui.editing_item.as_ref().map(|(_, key)| key.clone());
+        
+        // Handle preview trigger after making changes
+        let mut should_trigger_preview = false;
+        let mut preview_value = String::new();
+
         match &mut self.ui.edit_mode {
             EditMode::Text {
                 current_value,
@@ -423,16 +441,34 @@ impl App {
                         }
                     }
                     KeyCode::Esc => {
+                        // Cancel any pending preview changes
+                        if self.ui.is_preview_mode() {
+                            if let Err(e) = self.ui.cancel_preview(&self.hyprctl).await {
+                                eprintln!("Error canceling preview: {}", e);
+                            }
+                        }
                         self.ui.cancel_edit();
                     }
                     KeyCode::Char(c) => {
                         current_value.insert(*cursor_pos, c);
                         *cursor_pos += 1;
+                        
+                        // Set up for preview trigger
+                        if preview_enabled {
+                            should_trigger_preview = true;
+                            preview_value = current_value.clone();
+                        }
                     }
                     KeyCode::Backspace => {
                         if *cursor_pos > 0 {
                             *cursor_pos -= 1;
                             current_value.remove(*cursor_pos);
+                            
+                            // Set up for preview trigger
+                            if preview_enabled {
+                                should_trigger_preview = true;
+                                preview_value = current_value.clone();
+                            }
                         }
                     }
                     KeyCode::Left => {
@@ -683,6 +719,16 @@ impl App {
                 self.ui.cancel_edit();
             }
         }
+
+        // Handle preview after the match to avoid borrowing issues
+        if should_trigger_preview {
+            if let Some(key) = editing_key {
+                if let Err(e) = self.ui.handle_preview_change(&key, &preview_value, &self.hyprctl).await {
+                    eprintln!("Preview error: {}", e);
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -750,6 +796,13 @@ impl App {
         if self.ui.update_debounced_search() {
             // Search query was updated, pagination may need to be recalculated
             // This will be handled automatically in the next render cycle
+        }
+
+        // Process pending preview changes
+        if self.ui.has_pending_preview() {
+            if let Err(e) = self.ui.apply_pending_preview(&self.hyprctl).await {
+                eprintln!("Preview application error: {}", e);
+            }
         }
     }
 
