@@ -6,6 +6,7 @@ mod config;
 mod hyprctl;
 mod theme;
 mod ui;
+mod nixos;
 
 use app::App;
 

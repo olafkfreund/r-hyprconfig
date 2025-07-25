@@ -10,6 +10,7 @@ use ratatui::{
 };
 
 use crate::app::FocusedPanel;
+use crate::nixos::NixOSEnvironment;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum EditMode {
@@ -144,6 +145,14 @@ pub struct UI {
     pub item_cache_generation: usize, // Cache invalidation counter
 
     pub config_items: std::collections::HashMap<FocusedPanel, Vec<ConfigItem>>,
+    
+    // NixOS environment information
+    pub nixos_env: NixOSEnvironment,
+    
+    // NixOS export dialog state
+    pub show_nixos_export_dialog: bool,
+    pub nixos_export_config_type: crate::nixos::NixConfigType,
+    pub nixos_export_preview: Option<String>,
 }
 
 impl UI {
@@ -204,6 +213,14 @@ impl UI {
             item_cache_generation: 0,
 
             config_items: std::collections::HashMap::new(),
+            
+            // NixOS environment detection
+            nixos_env: NixOSEnvironment::detect(),
+            
+            // NixOS export dialog
+            show_nixos_export_dialog: false,
+            nixos_export_config_type: crate::nixos::NixConfigType::HomeManager,
+            nixos_export_preview: None,
         };
 
         // Initialize with first item selected for each panel
@@ -693,28 +710,12 @@ impl UI {
 
         // Insert configuration items only if they don't already exist
         // This prevents overwriting dynamically loaded data from hyprctl
-        if !self.config_items.contains_key(&FocusedPanel::Animations) {
-            self.config_items
-                .insert(FocusedPanel::Animations, animations_items);
-        }
-        if !self.config_items.contains_key(&FocusedPanel::Gestures) {
-            self.config_items
-                .insert(FocusedPanel::Gestures, gestures_items);
-        }
-        if !self.config_items.contains_key(&FocusedPanel::Binds) {
-            self.config_items.insert(FocusedPanel::Binds, binds_items);
-        }
-        if !self.config_items.contains_key(&FocusedPanel::WindowRules) {
-            self.config_items
-                .insert(FocusedPanel::WindowRules, window_rules_items);
-        }
-        if !self.config_items.contains_key(&FocusedPanel::LayerRules) {
-            self.config_items
-                .insert(FocusedPanel::LayerRules, layer_rules_items);
-        }
-        if !self.config_items.contains_key(&FocusedPanel::Misc) {
-            self.config_items.insert(FocusedPanel::Misc, misc_items);
-        }
+        self.config_items.entry(FocusedPanel::Animations).or_insert(animations_items);
+        self.config_items.entry(FocusedPanel::Gestures).or_insert(gestures_items);
+        self.config_items.entry(FocusedPanel::Binds).or_insert(binds_items);
+        self.config_items.entry(FocusedPanel::WindowRules).or_insert(window_rules_items);
+        self.config_items.entry(FocusedPanel::LayerRules).or_insert(layer_rules_items);
+        self.config_items.entry(FocusedPanel::Misc).or_insert(misc_items);
     }
 
     pub fn collect_all_config_changes(&self) -> std::collections::HashMap<String, String> {
@@ -814,18 +815,17 @@ impl UI {
             let mod_part = if modifiers.is_empty() {
                 String::new()
             } else {
-                format!("{}, ", modifiers)
+                format!("{modifiers}, ")
             };
 
             let args_part = if let Some(args) = args {
-                format!(", {}", args)
+                format!(", {args}")
             } else {
                 String::new()
             };
 
             Some(format!(
-                "bind = {}{}, {}{}",
-                mod_part, key, dispatcher, args_part
+                "bind = {mod_part}{key}, {dispatcher}{args_part}"
             ))
         } else {
             None
@@ -843,7 +843,7 @@ impl UI {
                 true
             }
             Err(e) => {
-                eprintln!("Warning: Failed to load all options from hyprctl: {}", e);
+                eprintln!("Warning: Failed to load all options from hyprctl: {e}");
                 // Fall back to loading individual sections
                 let mut sections_loaded = 0;
                 if self.load_general_config(hyprctl).await.is_ok() {
@@ -875,10 +875,9 @@ impl UI {
 
         // If hyprctl failed for rules, try to load from config file
         if !binds_success || !window_rules_success || !layer_rules_success {
-            eprintln!("Debug: hyprctl failed (binds: {}, window_rules: {}, layer_rules: {}), trying config file", 
-                      binds_success, window_rules_success, layer_rules_success);
+            eprintln!("Debug: hyprctl failed (binds: {binds_success}, window_rules: {window_rules_success}, layer_rules: {layer_rules_success}), trying config file");
             if let Err(e) = self.load_from_config_file().await {
-                eprintln!("Warning: Failed to load from config file: {}", e);
+                eprintln!("Warning: Failed to load from config file: {e}");
                 // As a last resort, add placeholder data
                 self.add_fallback_placeholder_data();
             }
@@ -915,7 +914,7 @@ impl UI {
             let mut bind_items = Vec::new();
 
             for (i, keybind) in hyprland_config.keybinds.iter().enumerate() {
-                let key = format!("bind_{}", i);
+                let key = format!("bind_{i}");
                 let display_value = format!(
                     "{} {} → {} {}",
                     keybind.modifiers,
@@ -951,12 +950,12 @@ impl UI {
             let mut rule_items = Vec::new();
 
             for (i, rule) in hyprland_config.window_rules.iter().enumerate() {
-                let key = format!("window_rule_{}", i);
+                let key = format!("window_rule_{i}");
 
                 rule_items.push(crate::ui::ConfigItem {
                     key: key.clone(),
                     value: rule.clone(),
-                    description: format!("Window rule: {}", rule),
+                    description: format!("Window rule: {rule}"),
                     data_type: crate::ui::ConfigDataType::String,
                     suggestions: self.get_window_rule_suggestions(),
                 });
@@ -974,12 +973,12 @@ impl UI {
 
             // Add layer rules
             for (i, rule) in hyprland_config.layer_rules.iter().enumerate() {
-                let key = format!("layer_rule_{}", i);
+                let key = format!("layer_rule_{i}");
 
                 rule_items.push(crate::ui::ConfigItem {
                     key: key.clone(),
                     value: rule.clone(),
-                    description: format!("Layer rule: {}", rule),
+                    description: format!("Layer rule: {rule}"),
                     data_type: crate::ui::ConfigDataType::String,
                     suggestions: self.get_layer_rule_suggestions(),
                 });
@@ -987,12 +986,12 @@ impl UI {
 
             // Add workspace rules
             for (i, rule) in hyprland_config.workspace_rules.iter().enumerate() {
-                let key = format!("workspace_rule_{}", i);
+                let key = format!("workspace_rule_{i}");
 
                 rule_items.push(crate::ui::ConfigItem {
                     key: key.clone(),
                     value: rule.clone(),
-                    description: format!("Workspace rule: {}", rule),
+                    description: format!("Workspace rule: {rule}"),
                     data_type: crate::ui::ConfigDataType::String,
                     suggestions: self.get_workspace_rule_suggestions(),
                 });
@@ -1009,7 +1008,7 @@ impl UI {
 
     fn add_fallback_placeholder_data(&mut self) {
         // Add placeholder keybinds if not already present
-        if !self.config_items.contains_key(&FocusedPanel::Binds) {
+        self.config_items.entry(FocusedPanel::Binds).or_insert_with(|| {
             let placeholder_binds = vec![
                 ConfigItem {
                     key: "bind_example_1".to_string(),
@@ -1030,9 +1029,8 @@ impl UI {
                     suggestions: vec![],
                 },
             ];
-            self.config_items
-                .insert(FocusedPanel::Binds, placeholder_binds);
-        }
+            placeholder_binds
+        });
 
         // Add placeholder window rules if not already present
         if !self.config_items.contains_key(&FocusedPanel::WindowRules) {
@@ -1214,7 +1212,7 @@ impl UI {
             "misc:enable_swallow" => "Enable window swallowing".to_string(),
             "misc:swallow_regex" => "Swallow regex pattern".to_string(),
 
-            _ => format!("Configuration option: {}", key),
+            _ => format!("Configuration option: {key}"),
         }
     }
 
@@ -1390,7 +1388,7 @@ impl UI {
                         }
                     }
                     Err(e) => {
-                        eprintln!("Warning: Failed to get {}: {}", hypr_key, e);
+                        eprintln!("Warning: Failed to get {hypr_key}: {e}");
                     }
                 }
             }
@@ -1418,7 +1416,7 @@ impl UI {
                         }
                     }
                     Err(e) => {
-                        eprintln!("Warning: Failed to get {}: {}", hypr_key, e);
+                        eprintln!("Warning: Failed to get {hypr_key}: {e}");
                     }
                 }
             }
@@ -1446,7 +1444,7 @@ impl UI {
                         }
                     }
                     Err(e) => {
-                        eprintln!("Warning: Failed to get {}: {}", hypr_key, e);
+                        eprintln!("Warning: Failed to get {hypr_key}: {e}");
                     }
                 }
             }
@@ -1472,7 +1470,7 @@ impl UI {
                         }
                     }
                     Err(e) => {
-                        eprintln!("Warning: Failed to get {}: {}", hypr_key, e);
+                        eprintln!("Warning: Failed to get {hypr_key}: {e}");
                     }
                 }
             }
@@ -1501,7 +1499,7 @@ impl UI {
                         }
                     }
                     Err(e) => {
-                        eprintln!("Warning: Failed to get {}: {}", hypr_key, e);
+                        eprintln!("Warning: Failed to get {hypr_key}: {e}");
                     }
                 }
             }
@@ -1531,7 +1529,7 @@ impl UI {
                         }
                     }
                     Err(e) => {
-                        eprintln!("Warning: Failed to get {}: {}", hypr_key, e);
+                        eprintln!("Warning: Failed to get {hypr_key}: {e}");
                     }
                 }
             }
@@ -1558,7 +1556,7 @@ impl UI {
 
                 for (i, keybind) in keybinds.iter().enumerate() {
                     // Create a unique key for each keybind
-                    let key = format!("bind_{}", i);
+                    let key = format!("bind_{i}");
 
                     bind_items.push(ConfigItem {
                         key: key.clone(),
@@ -1578,9 +1576,9 @@ impl UI {
                 Ok(())
             }
             Err(e) => {
-                eprintln!("Warning: Failed to load keybinds: {}", e);
+                eprintln!("Warning: Failed to load keybinds: {e}");
                 // Don't insert placeholder data here - let the config file loading handle it
-                return Err(e);
+                Err(e)
             }
         }
     }
@@ -1668,7 +1666,7 @@ impl UI {
                 let mut rule_items = Vec::new();
 
                 for (i, rule) in window_rules.iter().enumerate() {
-                    let key = format!("window_rule_{}", i);
+                    let key = format!("window_rule_{i}");
 
                     // Parse rule to extract description
                     let description = if rule.contains("windowrule") {
@@ -1679,7 +1677,7 @@ impl UI {
                             "Window rule configuration".to_string()
                         }
                     } else {
-                        format!("Window pattern: {}", rule)
+                        format!("Window pattern: {rule}")
                     };
 
                     rule_items.push(ConfigItem {
@@ -1697,8 +1695,8 @@ impl UI {
                 Ok(())
             }
             Err(e) => {
-                eprintln!("Warning: Failed to load window rules: {}", e);
-                return Err(e);
+                eprintln!("Warning: Failed to load window rules: {e}");
+                Err(e)
             }
         }
     }
@@ -1719,7 +1717,7 @@ impl UI {
                 let mut rule_items = Vec::new();
 
                 for (i, rule) in layer_rules.iter().enumerate() {
-                    let key = format!("layer_rule_{}", i);
+                    let key = format!("layer_rule_{i}");
 
                     // Parse rule to extract description
                     let description = if rule.contains("layerrule") {
@@ -1730,7 +1728,7 @@ impl UI {
                             "Layer rule configuration".to_string()
                         }
                     } else {
-                        format!("Layer configuration: {}", rule)
+                        format!("Layer configuration: {rule}")
                     };
 
                     rule_items.push(ConfigItem {
@@ -1747,19 +1745,19 @@ impl UI {
                     Ok(workspace_rules) => {
                         // Add workspace rules to the layer rules panel for now
                         for (i, rule) in workspace_rules.iter().enumerate() {
-                            let key = format!("workspace_rule_{}", i);
+                            let key = format!("workspace_rule_{i}");
 
                             rule_items.push(ConfigItem {
                                 key: key.clone(),
                                 value: rule.clone(),
-                                description: format!("Workspace rule: {}", rule),
+                                description: format!("Workspace rule: {rule}"),
                                 data_type: ConfigDataType::String,
                                 suggestions: self.get_workspace_rule_suggestions(),
                             });
                         }
                     }
                     Err(e) => {
-                        eprintln!("Warning: Failed to load workspace rules: {}", e);
+                        eprintln!("Warning: Failed to load workspace rules: {e}");
                     }
                 }
 
@@ -1769,8 +1767,8 @@ impl UI {
                 Ok(())
             }
             Err(e) => {
-                eprintln!("Warning: Failed to load layer rules: {}", e);
-                return Err(e);
+                eprintln!("Warning: Failed to load layer rules: {e}");
+                Err(e)
             }
         }
     }
@@ -1887,6 +1885,10 @@ impl UI {
         if self.show_reload_dialog {
             self.render_reload_dialog(f, size);
         }
+        
+        if self.show_nixos_export_dialog {
+            self.render_nixos_export_dialog(f, size);
+        }
 
         if self.edit_mode != EditMode::None {
             self.render_edit_popup(f, size);
@@ -1905,7 +1907,7 @@ impl UI {
         };
 
         // Create gradient-like effect with theme colors
-        let title_spans = vec![
+        let mut title_spans = vec![
             Span::styled("R-Hyprconfig", self.theme.header_style().bold()),
             Span::raw(" - "),
             Span::styled(
@@ -1913,6 +1915,25 @@ impl UI {
                 Style::default().fg(self.theme.accent_secondary).bold(),
             ),
         ];
+        
+        // Add NixOS indicator if detected
+        if self.nixos_env.is_nixos {
+            title_spans.push(Span::raw(" | "));
+            title_spans.push(Span::styled(
+                "NixOS",
+                Style::default().fg(self.theme.accent_info).bold(),
+            ));
+            
+            if let Some(config_loc) = self.nixos_env.get_primary_config_location() {
+                title_spans.push(Span::raw(" ("));
+                let config_type_str = config_loc.config_type.to_string();
+                title_spans.push(Span::styled(
+                    config_type_str,
+                    Style::default().fg(self.theme.fg_muted),
+                ));
+                title_spans.push(Span::raw(")"));
+            }
+        }
 
         let header_content = vec![
             Line::from(title_spans),
@@ -1949,8 +1970,7 @@ impl UI {
     }
 
     fn render_tab_bar(&self, f: &mut Frame, area: Rect) {
-        let tabs = vec![
-            FocusedPanel::General,
+        let tabs = [FocusedPanel::General,
             FocusedPanel::Input,
             FocusedPanel::Decoration,
             FocusedPanel::Animations,
@@ -1958,13 +1978,12 @@ impl UI {
             FocusedPanel::Binds,
             FocusedPanel::WindowRules,
             FocusedPanel::LayerRules,
-            FocusedPanel::Misc,
-        ];
+            FocusedPanel::Misc];
 
         let tab_spans: Vec<Span> = tabs
             .iter()
             .enumerate()
-            .map(|(i, &panel)| {
+            .flat_map(|(i, &panel)| {
                 let base_name = match panel {
                     FocusedPanel::General => "General",
                     FocusedPanel::Input => "Input",
@@ -1981,7 +2000,7 @@ impl UI {
                 let tab_name = if panel == self.current_tab {
                     let (current_page, total_pages, _) = self.get_pagination_info();
                     if total_pages > 1 {
-                        format!("{} ({}/{})", base_name, current_page, total_pages)
+                        format!("{base_name} ({current_page}/{total_pages})")
                     } else {
                         base_name.to_string()
                     }
@@ -1997,7 +2016,6 @@ impl UI {
                 }
                 result
             })
-            .flatten()
             .collect();
 
         let tabs_paragraph = Paragraph::new(Line::from(tab_spans))
@@ -2374,6 +2392,115 @@ impl UI {
         f.render_widget(Clear, popup_area);
         f.render_widget(popup, popup_area);
     }
+    
+    fn render_nixos_export_dialog(&self, f: &mut Frame, area: Rect) {
+        let popup_area = Self::centered_rect(90, 80, area);
+        
+        // Split the dialog into two sections: options and preview
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+            .split(popup_area);
+        
+        // Left side: Configuration type options
+        let current_type = &self.nixos_export_config_type;
+        let options_content = vec![
+            Line::from(vec![Span::styled(
+                "🏗️ NixOS Export Configuration",
+                Style::default().fg(Color::Cyan).bold(),
+            )]),
+            Line::from(""),
+            Line::from("Select NixOS configuration type:"),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("1", Style::default().fg(Color::Green).bold()),
+                Span::raw(" - Home Manager "),
+                if matches!(current_type, crate::nixos::NixConfigType::HomeManager) {
+                    Span::styled("(selected)", Style::default().fg(Color::Green))
+                } else {
+                    Span::raw("")
+                }
+            ]),
+            Line::from("    User-level configuration"),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("2", Style::default().fg(Color::Green).bold()),
+                Span::raw(" - System Configuration "),
+                if matches!(current_type, crate::nixos::NixConfigType::SystemConfig) {
+                    Span::styled("(selected)", Style::default().fg(Color::Green))
+                } else {
+                    Span::raw("")
+                }
+            ]),
+            Line::from("    System-level Hyprland enabling"),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("3", Style::default().fg(Color::Green).bold()),
+                Span::raw(" - Flake Home Manager "),
+                if matches!(current_type, crate::nixos::NixConfigType::FlakeHomeManager) {
+                    Span::styled("(selected)", Style::default().fg(Color::Green))
+                } else {
+                    Span::raw("")
+                }
+            ]),
+            Line::from("    Flake-based Home Manager"),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("4", Style::default().fg(Color::Green).bold()),
+                Span::raw(" - Flake System "),
+                if matches!(current_type, crate::nixos::NixConfigType::FlakeSystem) {
+                    Span::styled("(selected)", Style::default().fg(Color::Green))
+                } else {
+                    Span::raw("")
+                }
+            ]),
+            Line::from("    System-level flake"),
+            Line::from(""),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("Enter", Style::default().fg(Color::Green).bold()),
+                Span::styled(" - Export  ", Style::default().fg(Color::Gray)),
+                Span::styled("Esc", Style::default().fg(Color::Red).bold()),
+                Span::styled(" - Cancel", Style::default().fg(Color::Gray)),
+            ]),
+        ];
+        
+        let options_popup = Paragraph::new(options_content)
+            .alignment(Alignment::Left)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Cyan))
+                    .border_type(BorderType::Double)
+                    .title(" Configuration Type ")
+                    .title_style(Style::default().fg(Color::Cyan).bold()),
+            )
+            .wrap(Wrap { trim: true });
+        
+        // Right side: Preview
+        let preview_content = if let Some(preview) = &self.nixos_export_preview {
+            preview.clone()
+        } else {
+            "Generating preview...".to_string()
+        };
+        
+        let preview_popup = Paragraph::new(preview_content)
+            .alignment(Alignment::Left)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Yellow))
+                    .border_type(BorderType::Rounded)
+                    .title(" Preview ")
+                    .title_style(Style::default().fg(Color::Yellow).bold()),
+            )
+            .wrap(Wrap { trim: true });
+        
+        // Render both sides
+        f.render_widget(Clear, popup_area);
+        f.render_widget(options_popup, chunks[0]);
+        f.render_widget(preview_popup, chunks[1]);
+    }
 
     fn render_reload_dialog(&self, f: &mut Frame, area: Rect) {
         let popup_area = Self::centered_rect(60, 30, area);
@@ -2420,7 +2547,7 @@ impl UI {
 
         // Get the item being edited
         let (panel, key) = if let Some((panel, key)) = &self.editing_item {
-            (panel.clone(), key.clone())
+            (*panel, key.clone())
         } else {
             return;
         };
@@ -2450,16 +2577,12 @@ impl UI {
             match &self.edit_mode {
                 EditMode::Text {
                     current_value,
-                    cursor_pos,
+                    cursor_pos: _,
                 } => {
                     popup_content.push(Line::from(vec![
                         Span::styled("Value: ", Style::default().fg(Color::Green).bold()),
                         Span::raw(current_value),
-                        if *cursor_pos < current_value.len() {
-                            Span::styled("|", Style::default().fg(Color::White).bold())
-                        } else {
-                            Span::styled("|", Style::default().fg(Color::White).bold())
-                        },
+                        Span::styled("|", Style::default().fg(Color::White).bold()),
                     ]));
                 }
                 EditMode::Boolean { current_value } => {
@@ -2523,8 +2646,8 @@ impl UI {
                     bar.push(']');
 
                     let current_value_str = current_value.to_string();
-                    let min_str = format!("Min: {}", min);
-                    let max_str = format!("Max: {}", max);
+                    let min_str = format!("Min: {min}");
+                    let max_str = format!("Max: {max}");
 
                     popup_content.push(Line::from(vec![
                         Span::styled("Value: ", Style::default().fg(Color::Green).bold()),
@@ -3068,7 +3191,7 @@ impl UI {
                     if current_value.fract() == 0.0 {
                         (*current_value as i32).to_string()
                     } else {
-                        format!("{:.2}", current_value)
+                        format!("{current_value:.2}")
                     }
                 }
                 EditMode::Keybind {
@@ -3088,10 +3211,10 @@ impl UI {
                     let args_string = if args.is_empty() {
                         String::new()
                     } else {
-                        format!(" [{}]", args)
+                        format!(" [{args}]")
                     };
 
-                    format!("{}{} → {}{}", mod_string, key, dispatcher, args_string)
+                    format!("{mod_string}{key} → {dispatcher}{args_string}")
                 }
                 EditMode::Rule {
                     rule_type,
@@ -3101,9 +3224,9 @@ impl UI {
                 } => {
                     // Format rule for display and application
                     match rule_type {
-                        RuleType::Window => format!("windowrule = {}, {}", action, pattern),
-                        RuleType::Layer => format!("layerrule = {}, {}", action, pattern),
-                        RuleType::Workspace => format!("workspace = {}, {}", action, pattern),
+                        RuleType::Window => format!("windowrule = {action}, {pattern}"),
+                        RuleType::Layer => format!("layerrule = {action}, {pattern}"),
+                        RuleType::Workspace => format!("workspace = {action}, {pattern}"),
                     }
                 }
                 EditMode::None => return Ok(()),
@@ -3141,7 +3264,7 @@ impl UI {
                     if current_value.fract() == 0.0 {
                         (*current_value as i32).to_string()
                     } else {
-                        format!("{:.2}", current_value)
+                        format!("{current_value:.2}")
                     }
                 }
                 EditMode::Keybind {
@@ -3161,10 +3284,10 @@ impl UI {
                     let args_string = if args.is_empty() {
                         String::new()
                     } else {
-                        format!(" [{}]", args)
+                        format!(" [{args}]")
                     };
 
-                    format!("{}{} → {}{}", mod_string, key, dispatcher, args_string)
+                    format!("{mod_string}{key} → {dispatcher}{args_string}")
                 }
                 EditMode::Rule {
                     rule_type,
@@ -3174,9 +3297,9 @@ impl UI {
                 } => {
                     // Format rule for display and application
                     match rule_type {
-                        RuleType::Window => format!("windowrule = {}, {}", action, pattern),
-                        RuleType::Layer => format!("layerrule = {}, {}", action, pattern),
-                        RuleType::Workspace => format!("workspace = {}, {}", action, pattern),
+                        RuleType::Window => format!("windowrule = {action}, {pattern}"),
+                        RuleType::Layer => format!("layerrule = {action}, {pattern}"),
+                        RuleType::Workspace => format!("workspace = {action}, {pattern}"),
                     }
                 }
                 EditMode::None => return Ok(()),
@@ -3202,7 +3325,7 @@ impl UI {
                     Err(e) => {
                         // Failed to apply - show error but don't update UI
                         self.show_popup = true;
-                        self.popup_message = format!("Failed to apply setting: {}", e);
+                        self.popup_message = format!("Failed to apply setting: {e}");
                         self.cancel_edit();
                         return Err(e);
                     }
@@ -3516,7 +3639,7 @@ impl UI {
         let total_pages = if total_items == 0 {
             1
         } else {
-            (total_items + self.page_size - 1) / self.page_size
+            total_items.div_ceil(self.page_size)
         };
         
         self.total_pages.insert(panel, total_pages);
@@ -3650,7 +3773,7 @@ impl UI {
             // Create the ListItem directly without intermediate allocations
             let line = Line::from(vec![
                 Span::styled(
-                    format!("{:<28}", key_display),
+                    format!("{key_display:<28}"),
                     Style::default().fg(Color::Rgb(200, 200, 255)).bold(),
                 ),
                 Span::raw("│ "),
@@ -3699,12 +3822,12 @@ impl UI {
         let display_query = self.get_display_search_query();
         let search_text = if self.search_mode {
             if self.debounced_search_active {
-                format!("Search: {}⏳", display_query) // Show pending indicator
+                format!("Search: {display_query}⏳") // Show pending indicator
             } else {
-                format!("Search: {}", display_query)
+                format!("Search: {display_query}")
             }
         } else {
-            format!("Search: {} (Press / to edit)", display_query)
+            format!("Search: {display_query} (Press / to edit)")
         };
 
         let search_style = self.theme.search_style(self.search_mode);
@@ -3834,6 +3957,13 @@ impl UI {
             Line::from("  R                  Reload configuration"),
             Line::from("  A                  Add new item"),
             Line::from("  D                  Delete selected item"),
+            Line::from("  E                  Export configuration (TOML)"),
+            Line::from("  M                  Import configuration"),
+            Line::from(if self.nixos_env.is_nixos {
+                "  N                  Export as NixOS configuration"
+            } else {
+                "  N                  Export as NixOS (requires NixOS)"
+            }),
             Line::from(""),
             Line::from(vec![
                 Span::styled("🎨 Interface", Style::default().fg(self.theme.accent_secondary).bold())
@@ -3876,9 +4006,38 @@ impl UI {
             Line::from("  • Theme changes are saved immediately"),
             Line::from(""),
             Line::from(vec![
+                Span::styled("🚀 NixOS Integration", Style::default().fg(self.theme.accent_info).bold())
+            ]),
+            Line::from(if self.nixos_env.is_nixos {
+                format!("  Status: NixOS detected ({})", 
+                    self.nixos_env.get_primary_config_location()
+                        .map(|loc| loc.config_type.to_string())
+                        .unwrap_or_else(|| "Unknown".to_string()))
+            } else {
+                "  Status: Traditional Linux system".to_string()
+            }),
+            Line::from(if self.nixos_env.is_nixos {
+                "  • Import/export supports Nix expressions"
+            } else {
+                "  • Traditional config format supported"
+            }),
+            Line::from(if self.nixos_env.is_nixos {
+                "  • Automatic config type detection"
+            } else {
+                "  • Ready for NixOS if you switch systems"
+            }),
+            Line::from(""),
+            Line::from(vec![
                 Span::styled("⚠️ File Locations", Style::default().fg(self.theme.warning_style().fg.unwrap()).bold())
             ]),
-            Line::from("  Config: ~/.config/hypr/hyprland.conf"),
+            Line::from(if self.nixos_env.is_nixos && self.nixos_env.get_primary_config_location().is_some() {
+                format!("  NixOS Config: {}", 
+                    self.nixos_env.get_primary_config_location()
+                        .map(|loc| loc.path.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "Not found".to_string()))
+            } else {
+                "  Config: ~/.config/hypr/hyprland.conf".to_string()
+            }),
             Line::from("  Backup: ~/.config/hypr/hyprland.conf.backup"),
             Line::from("  App config: ~/.config/r-hyprconfig/"),
             Line::from(""),
@@ -3945,7 +4104,7 @@ impl UI {
             key: key.to_string(),
             value: value.to_string(),
             data_type: ConfigDataType::String, // Default to string
-            description: format!("Imported setting: {}", key),
+            description: format!("Imported setting: {key}"),
             suggestions: Vec::new(),
         };
         

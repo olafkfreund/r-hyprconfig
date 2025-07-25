@@ -2,19 +2,14 @@ use ratatui::style::{Color, Style};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum ColorScheme {
     Default,
+    #[default]
     Gruvbox,
     Nord,
     Catppuccin,
     Dracula,
-}
-
-impl Default for ColorScheme {
-    fn default() -> Self {
-        ColorScheme::Gruvbox
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -28,13 +23,16 @@ pub struct Theme {
     pub bg_secondary: Color,
     #[allow(dead_code)]
     pub bg_tertiary: Color,
+    #[allow(dead_code)]
     pub bg_selected: Color,
     pub bg_search: Color,
 
     // Foreground colors
+    #[allow(dead_code)]
     pub fg_primary: Color,
     pub fg_secondary: Color,
     pub fg_muted: Color,
+    #[allow(dead_code)]
     pub fg_bright: Color,
 
     // Accent colors
@@ -378,7 +376,7 @@ impl FromStr for ColorScheme {
             "nord" => Ok(ColorScheme::Nord),
             "catppuccin" => Ok(ColorScheme::Catppuccin),
             "dracula" => Ok(ColorScheme::Dracula),
-            _ => Err(format!("Unknown color scheme: {}", s)),
+            _ => Err(format!("Unknown color scheme: {s}")),
         }
     }
 }

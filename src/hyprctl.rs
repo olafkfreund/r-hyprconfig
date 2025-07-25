@@ -125,7 +125,7 @@ impl HyprlandKeybind {
         };
 
         let args_string = if let Some(ref args) = self.args {
-            format!(", {}", args)
+            format!(", {args}")
         } else {
             String::new()
         };
@@ -144,7 +144,7 @@ impl HyprlandKeybind {
         };
 
         let args_string = if let Some(ref args) = self.args {
-            format!(" [{}]", args)
+            format!(" [{args}]")
         } else {
             String::new()
         };
@@ -195,8 +195,7 @@ impl HyprCtl {
             }
             Err(e) => {
                 eprintln!(
-                    "Warning: Hyprland is not running or hyprctl is not available: {}",
-                    e
+                    "Warning: Hyprland is not running or hyprctl is not available: {e}"
                 );
                 Ok(()) // Don't fail, just warn - we can use config file fallback
             }
@@ -223,7 +222,7 @@ impl HyprCtl {
     pub async fn set_option(&self, option: &str, value: &str) -> Result<()> {
         let output = AsyncCommand::new("hyprctl")
             .arg("keyword")
-            .arg(format!("{}:{}", option, value))
+            .arg(format!("{option}:{value}"))
             .output()
             .await
             .context("Failed to execute hyprctl keyword")?;
@@ -257,7 +256,7 @@ impl HyprCtl {
                     options.insert(option.to_string(), value);
                 }
                 Err(e) => {
-                    eprintln!("Warning: Failed to get option {}: {}", option, e);
+                    eprintln!("Warning: Failed to get option {option}: {e}");
                 }
             }
         }
@@ -282,7 +281,7 @@ impl HyprCtl {
                     options.insert(option.to_string(), value);
                 }
                 Err(e) => {
-                    eprintln!("Warning: Failed to get option {}: {}", option, e);
+                    eprintln!("Warning: Failed to get option {option}: {e}");
                 }
             }
         }
@@ -307,7 +306,7 @@ impl HyprCtl {
                     options.insert(option.to_string(), value);
                 }
                 Err(e) => {
-                    eprintln!("Warning: Failed to get option {}: {}", option, e);
+                    eprintln!("Warning: Failed to get option {option}: {e}");
                 }
             }
         }
@@ -321,7 +320,7 @@ impl HyprCtl {
                     options.insert(option.to_string(), value);
                 }
                 Err(e) => {
-                    eprintln!("Warning: Failed to get option {}: {}", option, e);
+                    eprintln!("Warning: Failed to get option {option}: {e}");
                 }
             }
         }
@@ -344,7 +343,7 @@ impl HyprCtl {
                     options.insert(option.to_string(), value);
                 }
                 Err(e) => {
-                    eprintln!("Warning: Failed to get option {}: {}", option, e);
+                    eprintln!("Warning: Failed to get option {option}: {e}");
                 }
             }
         }
@@ -370,7 +369,7 @@ impl HyprCtl {
                     options.insert(option.to_string(), value);
                 }
                 Err(e) => {
-                    eprintln!("Warning: Failed to get option {}: {}", option, e);
+                    eprintln!("Warning: Failed to get option {option}: {e}");
                 }
             }
         }
@@ -476,7 +475,7 @@ impl HyprCtl {
     #[allow(dead_code)]
     pub async fn add_keybind(&self, bind: &HyprlandKeybind) -> Result<()> {
         let bind_command = bind.to_hyprland_config();
-        self.dispatch(&format!("keyword {}", bind_command)).await
+        self.dispatch(&format!("keyword {bind_command}")).await
     }
 
     #[allow(dead_code)]
@@ -487,7 +486,7 @@ impl HyprCtl {
             format!("{}_", modifiers.join("_"))
         };
 
-        let unbind_command = format!("unbind {}{}", mod_string, key);
+        let unbind_command = format!("unbind {mod_string}{key}");
         self.dispatch(&unbind_command).await
     }
 
@@ -599,12 +598,12 @@ impl HyprCtl {
                 for client in clients_array {
                     if let Some(class) = client.get("class").and_then(|c| c.as_str()) {
                         if !class.is_empty() {
-                            window_classes.insert(format!("class:^({})$", class));
+                            window_classes.insert(format!("class:^({class})$"));
                         }
                     }
                     if let Some(title) = client.get("title").and_then(|t| t.as_str()) {
                         if !title.is_empty() && title.len() > 3 {
-                            window_classes.insert(format!("title:^({})$", title));
+                            window_classes.insert(format!("title:^({title})$"));
                         }
                     }
                 }
@@ -658,7 +657,7 @@ impl HyprCtl {
         // Convert to layer rule suggestions
         let mut rules: Vec<String> = layer_names
             .into_iter()
-            .map(|name| format!("layerrule = blur, {}", name))
+            .map(|name| format!("layerrule = blur, {name}"))
             .collect();
 
         rules.sort();
@@ -678,19 +677,19 @@ impl HyprCtl {
 
     #[allow(dead_code)]
     pub async fn add_window_rule(&self, rule: &str) -> Result<()> {
-        let command = format!("keyword windowrule {}", rule);
+        let command = format!("keyword windowrule {rule}");
         self.dispatch(&command).await
     }
 
     #[allow(dead_code)]
     pub async fn add_layer_rule(&self, rule: &str) -> Result<()> {
-        let command = format!("keyword layerrule {}", rule);
+        let command = format!("keyword layerrule {rule}");
         self.dispatch(&command).await
     }
 
     #[allow(dead_code)]
     pub async fn add_workspace_rule(&self, rule: &str) -> Result<()> {
-        let command = format!("keyword workspace {}", rule);
+        let command = format!("keyword workspace {rule}");
         self.dispatch(&command).await
     }
 }

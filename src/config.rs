@@ -1,4 +1,5 @@
 use crate::theme::ColorScheme;
+use crate::nixos::{NixOSEnvironment, NixConfigType};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -14,17 +15,30 @@ pub struct Config {
     pub current_values: HashMap<String, String>,
     #[serde(default)]
     pub theme: ColorScheme,
+    
+    // NixOS-specific configuration
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nixos_config_type: Option<NixConfigType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nixos_config_path: Option<PathBuf>,
+    #[serde(default)]
+    pub nixos_auto_rebuild: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
+        let nixos_env = NixOSEnvironment::detect();
+        
         Self {
             hyprland_config_path: Self::default_hyprland_config_path(),
             backup_enabled: true,
             auto_save: false,
-            nixos_mode: Self::detect_nixos(),
+            nixos_mode: nixos_env.is_nixos,
             current_values: HashMap::new(),
             theme: ColorScheme::default(),
+            nixos_config_type: nixos_env.get_primary_config_location().map(|loc| loc.config_type.clone()),
+            nixos_config_path: nixos_env.get_primary_config_location().map(|loc| loc.path.clone()),
+            nixos_auto_rebuild: false,
         }
     }
 }
@@ -87,6 +101,7 @@ impl Config {
         }
     }
 
+    #[allow(dead_code)]
     fn detect_nixos() -> bool {
         // Check if we're running on NixOS
         Path::new("/etc/NIXOS").exists()
@@ -140,7 +155,7 @@ impl Config {
         let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
         let backup_path = self
             .hyprland_config_path
-            .with_extension(format!("conf.backup.{}", timestamp));
+            .with_extension(format!("conf.backup.{timestamp}"));
 
         async_fs::copy(&self.hyprland_config_path, &backup_path)
             .await
@@ -228,7 +243,7 @@ impl Config {
             .await
             .context("Failed to write NixOS compatible config")?;
 
-        println!("NixOS mode: Configuration saved to {:?}", nixos_config_path);
+        println!("NixOS mode: Configuration saved to {nixos_config_path:?}");
         println!(
             "Please import this file in your NixOS configuration or copy the settings manually."
         );
@@ -317,10 +332,10 @@ impl Config {
                     option.as_str()
                 };
 
-                if trimmed.starts_with(&format!("{} =", option_prefix))
-                    || trimmed.starts_with(&format!("{}=", option_prefix))
+                if trimmed.starts_with(&format!("{option_prefix} ="))
+                    || trimmed.starts_with(&format!("{option_prefix}="))
                 {
-                    line_updates.push((i, format!("    {} = {}", option_prefix, value)));
+                    line_updates.push((i, format!("    {option_prefix} = {value}")));
                     updated_options.insert(option.clone(), value.clone());
                     break;
                 }
@@ -337,7 +352,7 @@ impl Config {
             if !updated_options.contains_key(option) {
                 let _section = if let Some((section, option_name)) = option.split_once(':') {
                     // Find or create section
-                    let section_header = format!("{} {{", section);
+                    let section_header = format!("{section} {{");
                     let mut section_found = false;
                     let mut section_end = lines.len();
 
@@ -356,18 +371,18 @@ impl Config {
                     }
 
                     if section_found {
-                        lines.insert(section_end, format!("    {} = {}", option_name, value));
+                        lines.insert(section_end, format!("    {option_name} = {value}"));
                     } else {
                         // Create new section
                         lines.push(String::new());
-                        lines.push(format!("{} {{", section));
-                        lines.push(format!("    {} = {}", option_name, value));
+                        lines.push(format!("{section} {{"));
+                        lines.push(format!("    {option_name} = {value}"));
                         lines.push("}".to_string());
                     }
                     section
                 } else {
                     // Global option
-                    lines.push(format!("{} = {}", option, value));
+                    lines.push(format!("{option} = {value}"));
                     "global"
                 };
 
@@ -403,9 +418,9 @@ impl Config {
 
         // Generate NixOS-style configuration
         for (section, options) in sections {
-            content.push_str(&format!("{} = {{\n", section));
+            content.push_str(&format!("{section} = {{\n"));
             for (option, value) in options {
-                content.push_str(&format!("  {} = {};\n", option, value));
+                content.push_str(&format!("  {option} = {value};\n"));
             }
             content.push_str("};\n\n");
         }
@@ -438,7 +453,7 @@ impl Config {
             .await
             .context("Failed to read Hyprland config file")?;
 
-        Ok(HyprlandConfigFile::parse(&content)?)
+        HyprlandConfigFile::parse(&content)
     }
 }
 
@@ -485,7 +500,7 @@ impl HyprlandConfigFile {
                 if let Some(keybind) = Self::parse_keybind_line(line) {
                     keybinds.push(keybind);
                 } else {
-                    eprintln!("Debug: Failed to parse keybind line: {}", line);
+                    eprintln!("Debug: Failed to parse keybind line: {line}");
                 }
             }
             // Parse window rules
@@ -500,7 +515,7 @@ impl HyprlandConfigFile {
             else if line.starts_with("blurls") {
                 // Convert blurls to layerrule format
                 if let Some(layer_name) = line.strip_prefix("blurls=") {
-                    layer_rules.push(format!("layerrule = blur, {}", layer_name));
+                    layer_rules.push(format!("layerrule = blur, {layer_name}"));
                 }
             }
             // Parse workspace rules

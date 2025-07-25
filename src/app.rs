@@ -117,7 +117,7 @@ impl App {
         let hyprctl = match HyprCtl::new().await {
             Ok(hyprctl) => hyprctl,
             Err(e) => {
-                eprintln!("Warning: Failed to initialize hyprctl: {}", e);
+                eprintln!("Warning: Failed to initialize hyprctl: {e}");
                 eprintln!("Will try to load configuration from config file instead.");
                 // Create a dummy HyprCtl that will fail gracefully
                 HyprCtl::new_disconnected()
@@ -131,7 +131,7 @@ impl App {
 
         // Load current configuration from hyprctl or config file
         if let Err(e) = ui.load_current_config(&hyprctl).await {
-            eprintln!("Warning: Failed to load current configuration: {}", e);
+            eprintln!("Warning: Failed to load current configuration: {e}");
             eprintln!("Using default placeholder values.");
         }
 
@@ -197,6 +197,10 @@ impl App {
 
     async fn handle_key_event(&mut self, key: KeyCode) -> Result<()> {
         // Handle popup states first
+        if self.ui.show_nixos_export_dialog {
+            return self.handle_nixos_export_dialog_key(key).await;
+        }
+        
         if self.ui.show_save_dialog {
             return self.handle_save_dialog_key(key).await;
         }
@@ -273,7 +277,7 @@ impl App {
                 self.config.theme = new_theme;
                 // Save theme to config file
                 if let Err(e) = self.config.save().await {
-                    eprintln!("Warning: Failed to save theme to config: {}", e);
+                    eprintln!("Warning: Failed to save theme to config: {e}");
                 }
                 self.ui.show_popup = true;
                 self.ui.popup_message = format!("Theme changed to: {}", self.config.theme);
@@ -286,6 +290,14 @@ impl App {
             }
             KeyCode::F(1) | KeyCode::Char('?') => {
                 self.ui.toggle_help();
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') => {
+                if self.config.nixos_mode {
+                    self.show_nixos_export_dialog().await;
+                } else {
+                    self.ui.show_popup = true;
+                    self.ui.popup_message = "NixOS export is only available on NixOS systems".to_string();
+                }
             }
             _ => {}
         }
@@ -302,6 +314,38 @@ impl App {
             }
             KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
                 self.ui.show_save_dialog = false;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+    
+    async fn handle_nixos_export_dialog_key(&mut self, key: KeyCode) -> Result<()> {
+        match key {
+            KeyCode::Char('1') => {
+                self.ui.nixos_export_config_type = crate::nixos::NixConfigType::HomeManager;
+                self.update_nixos_export_preview().await;
+            }
+            KeyCode::Char('2') => {
+                self.ui.nixos_export_config_type = crate::nixos::NixConfigType::SystemConfig;
+                self.update_nixos_export_preview().await;
+            }
+            KeyCode::Char('3') => {
+                self.ui.nixos_export_config_type = crate::nixos::NixConfigType::FlakeHomeManager;
+                self.update_nixos_export_preview().await;
+            }
+            KeyCode::Char('4') => {
+                self.ui.nixos_export_config_type = crate::nixos::NixConfigType::FlakeSystem;
+                self.update_nixos_export_preview().await;
+            }
+            KeyCode::Enter => {
+                // Export with selected config type
+                self.ui.show_nixos_export_dialog = false;
+                self.export_nixos_config().await;
+            }
+            KeyCode::Esc => {
+                self.ui.show_nixos_export_dialog = false;
+                self.ui.nixos_export_preview = None;
             }
             _ => {}
         }
@@ -697,14 +741,14 @@ impl App {
                     eprintln!("Hyprland configuration reloaded from file");
                 }
                 Err(e) => {
-                    eprintln!("Warning: Failed to reload Hyprland configuration: {}", e);
+                    eprintln!("Warning: Failed to reload Hyprland configuration: {e}");
                 }
             }
         }
 
         // Reload current configuration into UI (from hyprctl or config file)
         if let Err(e) = self.ui.load_current_config(&self.hyprctl).await {
-            eprintln!("Warning: Failed to reload UI configuration: {}", e);
+            eprintln!("Warning: Failed to reload UI configuration: {e}");
         }
 
         Ok(())
@@ -754,7 +798,7 @@ impl App {
                         eprintln!("Hyprland configuration reloaded successfully");
                     }
                     Err(e) => {
-                        eprintln!("Warning: Failed to reload Hyprland configuration: {}", e);
+                        eprintln!("Warning: Failed to reload Hyprland configuration: {e}");
                         eprintln!("Changes saved to config file but may require manual restart");
                     }
                 }
@@ -772,11 +816,11 @@ impl App {
         match self.export_config_to_file().await {
             Ok(path) => {
                 self.ui.show_popup = true;
-                self.ui.popup_message = format!("Configuration exported to: {}", path);
+                self.ui.popup_message = format!("Configuration exported to: {path}");
             }
             Err(e) => {
                 self.ui.show_popup = true;
-                self.ui.popup_message = format!("Export failed: {}", e);
+                self.ui.popup_message = format!("Export failed: {e}");
             }
         }
     }
@@ -785,11 +829,11 @@ impl App {
         match self.import_config_from_file().await {
             Ok(imported_count) => {
                 self.ui.show_popup = true;
-                self.ui.popup_message = format!("Imported {} configuration items successfully!", imported_count);
+                self.ui.popup_message = format!("Imported {imported_count} configuration items successfully!");
             }
             Err(e) => {
                 self.ui.show_popup = true;
-                self.ui.popup_message = format!("Import failed: {}", e);
+                self.ui.popup_message = format!("Import failed: {e}");
             }
         }
     }
@@ -806,7 +850,7 @@ impl App {
 
         // Generate timestamp for unique filename
         let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
-        let filename = format!("hyprconfig_export_{}.toml", timestamp);
+        let filename = format!("hyprconfig_export_{timestamp}.toml");
         let export_path = export_dir.join(&filename);
 
         // Collect all configuration data
@@ -829,17 +873,17 @@ impl App {
             )),
             ("keybinds".to_string(), toml::Value::Array(
                 keybinds.into_iter()
-                    .map(|kb| toml::Value::String(kb))
+                    .map(toml::Value::String)
                     .collect()
             )),
             ("window_rules".to_string(), toml::Value::Array(
                 window_rules.into_iter()
-                    .map(|rule| toml::Value::String(rule))
+                    .map(toml::Value::String)
                     .collect()
             )),
             ("layer_rules".to_string(), toml::Value::Array(
                 layer_rules.into_iter()
-                    .map(|rule| toml::Value::String(rule))
+                    .map(toml::Value::String)
                     .collect()
             )),
         ]);
@@ -951,5 +995,103 @@ impl App {
         self.ui.refresh_all_panels();
 
         Ok(imported_count)
+    }
+    
+    async fn show_nixos_export_dialog(&mut self) {
+        // Initialize the dialog with current config type or default
+        if let Some(nixos_config_type) = &self.config.nixos_config_type {
+            self.ui.nixos_export_config_type = nixos_config_type.clone();
+        }
+        
+        // Generate preview
+        self.update_nixos_export_preview().await;
+        
+        self.ui.show_nixos_export_dialog = true;
+    }
+    
+    async fn update_nixos_export_preview(&mut self) {
+        use crate::nixos::ConfigConverter;
+        
+        let config_changes = self.ui.collect_all_config_changes();
+        let keybinds = self.ui.collect_keybinds();
+        let window_rules = self.ui.collect_window_rules();
+        let layer_rules = self.ui.collect_layer_rules();
+        
+        let converter = ConfigConverter::new();
+        match converter.traditional_to_nixos(
+            &config_changes,
+            &keybinds,
+            &window_rules,
+            &layer_rules,
+            self.ui.nixos_export_config_type.clone(),
+        ) {
+            Ok(config) => {
+                // Truncate preview if too long
+                let preview = if config.len() > 2000 {
+                    format!("{}...\n\n[Output truncated - {} more characters]", 
+                           &config[..2000], config.len() - 2000)
+                } else {
+                    config
+                };
+                self.ui.nixos_export_preview = Some(preview);
+            }
+            Err(e) => {
+                self.ui.nixos_export_preview = Some(format!("Error generating preview: {e}"));
+            }
+        }
+    }
+
+    async fn export_nixos_config(&mut self) {
+        match self.export_nixos_config_to_file().await {
+            Ok(path) => {
+                self.ui.show_popup = true;
+                self.ui.popup_message = format!("NixOS configuration exported to: {path}");
+            }
+            Err(e) => {
+                self.ui.show_popup = true;
+                self.ui.popup_message = format!("NixOS export failed: {e}");
+            }
+        }
+    }
+    
+    async fn export_nixos_config_to_file(&mut self) -> Result<String> {
+        use crate::nixos::ConfigConverter;
+        use std::fs;
+        use chrono::Utc;
+        
+        // Create export directory if it doesn't exist
+        let config_dir = dirs::config_dir()
+            .ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?;
+        let export_dir = config_dir.join("r-hyprconfig").join("nixos-exports");
+        fs::create_dir_all(&export_dir)?;
+        
+        // Generate timestamp for unique filename
+        let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
+        let filename = format!("hyprland_nixos_export_{timestamp}.nix");
+        let export_path = export_dir.join(&filename);
+        
+        // Collect all configuration data
+        let config_changes = self.ui.collect_all_config_changes();
+        let keybinds = self.ui.collect_keybinds();
+        let window_rules = self.ui.collect_window_rules();
+        let layer_rules = self.ui.collect_layer_rules();
+        
+        // Use the selected config type from the dialog
+        let target_type = self.ui.nixos_export_config_type.clone();
+        
+        // Convert to NixOS format
+        let converter = ConfigConverter::new();
+        let nixos_config = converter.traditional_to_nixos(
+            &config_changes,
+            &keybinds,
+            &window_rules,
+            &layer_rules,
+            target_type,
+        )?;
+        
+        // Write to file
+        fs::write(&export_path, nixos_config)?;
+        
+        Ok(export_path.to_string_lossy().to_string())
     }
 }
