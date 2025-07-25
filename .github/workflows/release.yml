@@ -13,25 +13,13 @@ jobs:
     strategy:
       matrix:
         include:
-          # Debian/Ubuntu packages
+          # x86_64 packages only (ARM64 requires more complex setup)
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
             package_type: deb
             arch: amd64
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
-            package_type: deb
-            arch: arm64
-          
-          # RPM packages (Fedora/RHEL/CentOS)
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
             package_type: rpm
             arch: x86_64
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
-            package_type: rpm
-            arch: aarch64
 
     steps:
     - uses: actions/checkout@v4
@@ -55,17 +43,8 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y pkg-config libssl-dev
 
-    - name: Install cross
-      if: matrix.target != 'x86_64-unknown-linux-gnu'
-      run: cargo install cross
-
     - name: Build binary
-      run: |
-        if [ "${{ matrix.target }}" = "x86_64-unknown-linux-gnu" ]; then
-          cargo build --release --target ${{ matrix.target }}
-        else
-          cross build --release --target ${{ matrix.target }}
-        fi
+      run: cargo build --release --target ${{ matrix.target }}
 
     - name: Install packaging tools
       run: |
@@ -126,14 +105,14 @@ jobs:
         body: |
           ## Installation
 
-          ### Debian/Ubuntu
+          ### Debian/Ubuntu (x86_64)
           ```bash
           wget https://github.com/olafkfreund/r-hyprconfig/releases/download/${{ github.ref_name }}/r-hyprconfig_${{ github.ref_name }}_amd64.deb
           sudo dpkg -i r-hyprconfig_${{ github.ref_name }}_amd64.deb
           sudo apt-get install -f  # Fix dependencies if needed
           ```
 
-          ### Fedora/RHEL/CentOS
+          ### Fedora/RHEL/CentOS (x86_64)
           ```bash
           wget https://github.com/olafkfreund/r-hyprconfig/releases/download/${{ github.ref_name }}/r-hyprconfig-${{ github.ref_name }}-1.x86_64.rpm
           sudo rpm -i r-hyprconfig-${{ github.ref_name }}-1.x86_64.rpm
@@ -141,22 +120,23 @@ jobs:
           sudo dnf install ./r-hyprconfig-${{ github.ref_name }}-1.x86_64.rpm
           ```
 
-          ### Arch Linux (AUR)
-          ```bash
-          yay -S r-hyprconfig
-          # Or manually:
-          git clone https://aur.archlinux.org/r-hyprconfig.git
-          cd r-hyprconfig
-          makepkg -si
-          ```
-
           ### With Nix
           ```bash
           nix run github:olafkfreund/r-hyprconfig/${{ github.ref_name }}
           ```
 
-          ### Direct binary download
-          Download the appropriate package from the assets below for your distribution and architecture.
+          ### From Source (all architectures)
+          ```bash
+          git clone https://github.com/olafkfreund/r-hyprconfig.git
+          cd r-hyprconfig
+          cargo build --release
+          sudo cp target/release/r-hyprconfig /usr/local/bin/
+          ```
+
+          ### Arch Linux (AUR)
+          *AUR package coming soon*
+
+          **Note:** Pre-built packages are available for x86_64 architecture. ARM64 users can compile from source.
 
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

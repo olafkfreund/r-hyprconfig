@@ -20,7 +20,9 @@ extended-description = """\
 r-hyprconfig is a modern terminal user interface (TUI) application \
 that helps Hyprland users visually configure their window manager settings \
 by providing an intuitive interface for hyprctl commands with automatic \
-config file management for both standard Linux distributions and NixOS workflows."""
+config file management for both standard Linux distributions and NixOS workflows.
+
+Packages are available for x86_64 architecture. ARM64 support available via source compilation."""
 depends = "$auto"
 section = "utils"
 priority = "optional"
