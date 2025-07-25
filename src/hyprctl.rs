@@ -28,7 +28,7 @@ pub struct GeneralConfig {
     pub hover_icon_on_border: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct InputConfig {
     pub kb_layout: String,
     pub kb_variant: String,
@@ -42,7 +42,7 @@ pub struct InputConfig {
     pub natural_scroll: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DecorationConfig {
     pub rounding: i32,
     pub blur_enabled: bool,
@@ -56,14 +56,14 @@ pub struct DecorationConfig {
     pub dim_strength: f32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AnimationsConfig {
     pub enabled: bool,
     pub beziers: Vec<String>,
     pub animations: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GesturesConfig {
     pub workspace_swipe: bool,
     pub workspace_swipe_fingers: i32,
@@ -75,7 +75,7 @@ pub struct GesturesConfig {
     pub workspace_swipe_forever: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MiscConfig {
     pub disable_hyprland_logo: bool,
     pub disable_splash_rendering: bool,

@@ -5,7 +5,9 @@ mod app;
 mod batch;
 mod config;
 mod hyprctl;
+mod import_export;
 mod nixos;
+mod platform;
 mod theme;
 mod ui;
 

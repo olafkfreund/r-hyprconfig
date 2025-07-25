@@ -1,9 +1,11 @@
 pub mod config_discovery;
 pub mod converter;
 pub mod detection;
+pub mod generator;
 pub mod parser;
 
 pub use converter::*;
+pub use generator::*;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
