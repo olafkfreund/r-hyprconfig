@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["BatchDialogMode","ConfigDataType","EditMode","KeybindField","RuleField","RuleType"],"struct":["ConfigItem","UI"]};

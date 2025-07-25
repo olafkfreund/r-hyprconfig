@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["AnimationsConfig","DecorationConfig","GeneralConfig","GesturesConfig","HyprCtl","HyprlandConfig","HyprlandKeybind","InputConfig","MiscConfig"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["BatchOperationType"],"struct":["BatchExecutionResult","BatchManager","BatchOperation","BatchProfile"],"trait":["ConfigBatchExt"]};

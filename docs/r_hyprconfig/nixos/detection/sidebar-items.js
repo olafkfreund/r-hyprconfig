@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["check_hyprland_in_file","check_hyprland_in_flake","detect_home_manager","detect_nix_store","detect_nixos_environment","detect_nixos_version","discover_config_locations","discover_flake_configs","is_nixos_system"]};

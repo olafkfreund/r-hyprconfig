@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["main"],"mod":["app","batch","config","hyprctl","nixos","theme","ui"],"struct":["Cli"]};
