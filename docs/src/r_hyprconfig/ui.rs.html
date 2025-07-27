@@ -3636,7 +3636,7 @@
 <a href=#3636 id=3636 data-nosnippet>3636</a>        <span class="prelude-val">Ok</span>(())
 <a href=#3637 id=3637 data-nosnippet>3637</a>    }
 <a href=#3638 id=3638 data-nosnippet>3638</a>
-<a href=#3639 id=3639 data-nosnippet>3639</a>    <span class="kw">fn </span>get_hyprctl_key(<span class="kw-2">&amp;</span><span class="self">self</span>, panel: <span class="kw-2">&amp;</span>FocusedPanel, key: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Option</span>&lt;String&gt; {
+<a href=#3639 id=3639 data-nosnippet>3639</a>    <span class="kw">pub fn </span>get_hyprctl_key(<span class="kw-2">&amp;</span><span class="self">self</span>, panel: <span class="kw-2">&amp;</span>FocusedPanel, key: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Option</span>&lt;String&gt; {
 <a href=#3640 id=3640 data-nosnippet>3640</a>        <span class="kw">match </span>panel {
 <a href=#3641 id=3641 data-nosnippet>3641</a>            FocusedPanel::General =&gt; <span class="kw">match </span>key {
 <a href=#3642 id=3642 data-nosnippet>3642</a>                <span class="string">"gaps_in" </span>=&gt; <span class="prelude-val">Some</span>(<span class="string">"general:gaps_in"</span>.to_string()),
