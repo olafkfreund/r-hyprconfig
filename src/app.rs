@@ -271,14 +271,10 @@ impl App {
                 
                 // Trigger live preview if enabled
                 if self.ui.is_preview_mode() {
-                    let preview_data = self.ui.get_selected_item()
-                        .and_then(|item| {
-                            self.ui.get_hyprctl_key(&self.focused_panel, &item.key)
-                                .map(|hypr_key| (hypr_key, item.value.clone()))
-                        });
-                    
-                    if let Some((hypr_key, value)) = preview_data {
-                        if let Err(e) = self.ui.handle_preview_change(&hypr_key, &value, &self.hyprctl).await {
+                    if let Some(item) = self.ui.get_selected_item() {
+                        let item_key = item.key.clone();
+                        let item_value = item.value.clone();
+                        if let Err(e) = self.ui.handle_preview_change(&item_key, &item_value, &self.hyprctl).await {
                             eprintln!("Preview error: {}", e);
                         }
                     }
@@ -289,14 +285,10 @@ impl App {
                 
                 // Trigger live preview if enabled
                 if self.ui.is_preview_mode() {
-                    let preview_data = self.ui.get_selected_item()
-                        .and_then(|item| {
-                            self.ui.get_hyprctl_key(&self.focused_panel, &item.key)
-                                .map(|hypr_key| (hypr_key, item.value.clone()))
-                        });
-                    
-                    if let Some((hypr_key, value)) = preview_data {
-                        if let Err(e) = self.ui.handle_preview_change(&hypr_key, &value, &self.hyprctl).await {
+                    if let Some(item) = self.ui.get_selected_item() {
+                        let item_key = item.key.clone();
+                        let item_value = item.value.clone();
+                        if let Err(e) = self.ui.handle_preview_change(&item_key, &item_value, &self.hyprctl).await {
                             eprintln!("Preview error: {}", e);
                         }
                     }

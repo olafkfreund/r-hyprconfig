@@ -251,7 +251,8 @@ impl HyprCtl {
     pub async fn set_option(&self, option: &str, value: &str) -> Result<()> {
         let output = AsyncCommand::new("hyprctl")
             .arg("keyword")
-            .arg(format!("{option}:{value}"))
+            .arg(option)
+            .arg(value)
             .output()
             .await
             .context("Failed to execute hyprctl keyword")?;

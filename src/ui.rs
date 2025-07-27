@@ -5225,7 +5225,6 @@ impl UI {
         }
 
         // Set up debounced preview change using the hyprctl key
-        eprintln!("DEBUG: Queueing preview change: {} = {}", hypr_key, value);
         self.pending_preview_change = Some((hypr_key, value.to_string()));
         self.last_preview_time = now;
 
@@ -5246,15 +5245,12 @@ impl UI {
         if now.duration_since(self.last_preview_time) >= self.preview_debounce_delay {
             if let Some((key, value)) = &self.pending_preview_change {
                 // Apply the preview change via hyprctl
-                eprintln!("DEBUG: Applying preview change: {} = {}", key, value);
                 match hyprctl.set_option(key, value).await {
                     Ok(_) => {
-                        eprintln!("DEBUG: Preview change applied successfully!");
                         // Success - clear pending change
                         self.pending_preview_change = None;
                     }
                     Err(e) => {
-                        eprintln!("DEBUG: Preview change failed: {}", e);
                         // Failed to apply - show error but don't clear pending change
                         self.show_popup = true;
                         self.popup_message = format!("Preview failed: {}", e);
