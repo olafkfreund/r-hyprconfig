@@ -58,7 +58,11 @@ impl PathConfiguration {
         }
 
         // Check write permissions for app directories
-        for dir in [&self.app_config_dir, &self.app_cache_dir, &self.app_data_dir] {
+        for dir in [
+            &self.app_config_dir,
+            &self.app_cache_dir,
+            &self.app_data_dir,
+        ] {
             if dir.exists() {
                 let test_file = dir.join(".write_test");
                 match std::fs::write(&test_file, "test") {
@@ -66,11 +70,7 @@ impl PathConfiguration {
                         let _ = std::fs::remove_file(test_file);
                     }
                     Err(e) => {
-                        anyhow::bail!(
-                            "No write permission for directory {:?}: {}",
-                            dir,
-                            e
-                        );
+                        anyhow::bail!("No write permission for directory {:?}: {}", dir, e);
                     }
                 }
             }
@@ -90,7 +90,7 @@ impl ConfigPathManager {
     /// Get path configuration for the current distribution
     pub fn get_paths() -> Result<PathConfiguration> {
         let cache = PATH_CACHE.get_or_init(|| Mutex::new(None));
-        
+
         {
             let cached = cache.lock().unwrap();
             if let Some(ref paths) = *cached {
@@ -100,12 +100,12 @@ impl ConfigPathManager {
 
         let distribution = DistributionDetector::detect()?;
         let paths = Self::resolve_paths(&distribution)?;
-        
+
         {
             let mut cached = cache.lock().unwrap();
             *cached = Some(paths.clone());
         }
-        
+
         Ok(paths)
     }
 
@@ -127,16 +127,12 @@ impl ConfigPathManager {
 
     /// Resolve paths for standard Linux distributions
     fn resolve_standard_paths(distribution: &DistributionInfo) -> Result<PathConfiguration> {
-        let home_dir = dirs::home_dir()
-            .context("Could not determine home directory")?;
+        let home_dir = dirs::home_dir().context("Could not determine home directory")?;
 
         // Standard XDG paths
-        let config_home = dirs::config_dir()
-            .unwrap_or_else(|| home_dir.join(".config"));
-        let cache_home = dirs::cache_dir()
-            .unwrap_or_else(|| home_dir.join(".cache"));
-        let data_home = dirs::data_dir()
-            .unwrap_or_else(|| home_dir.join(".local/share"));
+        let config_home = dirs::config_dir().unwrap_or_else(|| home_dir.join(".config"));
+        let cache_home = dirs::cache_dir().unwrap_or_else(|| home_dir.join(".cache"));
+        let data_home = dirs::data_dir().unwrap_or_else(|| home_dir.join(".local/share"));
 
         // Hyprland configuration paths
         let hyprland_config_dir = Self::resolve_hyprland_config_dir(&config_home, distribution)?;
@@ -166,8 +162,7 @@ impl ConfigPathManager {
 
     /// Resolve paths specifically for NixOS
     fn resolve_nixos_paths(_distribution: &DistributionInfo) -> Result<PathConfiguration> {
-        let home_dir = dirs::home_dir()
-            .context("Could not determine home directory")?;
+        let home_dir = dirs::home_dir().context("Could not determine home directory")?;
 
         // Check for NixOS-specific environment variables
         let config_home = std::env::var("XDG_CONFIG_HOME")
@@ -231,10 +226,7 @@ impl ConfigPathManager {
             DistributionType::Ubuntu | DistributionType::Debian => {
                 // Debian-based distributions might have different conventions
                 // Check for existing directories in order of preference
-                let candidates = [
-                    hypr_dir.clone(),
-                    config_home.join("hyprland"),
-                ];
+                let candidates = [hypr_dir.clone(), config_home.join("hyprland")];
 
                 for candidate in &candidates {
                     if candidate.exists() {
@@ -273,12 +265,7 @@ impl ConfigPathManager {
         // Check for alternative config files
         let config_dir = &paths.hyprland_config_dir;
         if config_dir.exists() {
-            let alternative_names = [
-                "hyprland.conf",
-                "config",
-                "hypr.conf",
-                "hyprland.config",
-            ];
+            let alternative_names = ["hyprland.conf", "config", "hypr.conf", "hyprland.config"];
 
             for name in &alternative_names {
                 let config_file = config_dir.join(name);
@@ -300,8 +287,12 @@ impl ConfigPathManager {
         let backup_name = format!("hyprland_{}.conf", timestamp);
         let backup_path = paths.backup_dir.join(backup_name);
 
-        std::fs::copy(source, &backup_path)
-            .with_context(|| format!("Failed to create backup from {:?} to {:?}", source, backup_path))?;
+        std::fs::copy(source, &backup_path).with_context(|| {
+            format!(
+                "Failed to create backup from {:?} to {:?}",
+                source, backup_path
+            )
+        })?;
 
         Ok(backup_path)
     }
@@ -315,7 +306,7 @@ impl ConfigPathManager {
             for entry in std::fs::read_dir(&paths.backup_dir)? {
                 let entry = entry?;
                 let path = entry.path();
-                
+
                 if path.is_file() {
                     if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                         if name.starts_with("hyprland_") && name.ends_with(".conf") {
@@ -330,12 +321,12 @@ impl ConfigPathManager {
         backups.sort_by(|a, b| {
             let a_meta = std::fs::metadata(a).ok();
             let b_meta = std::fs::metadata(b).ok();
-            
+
             match (a_meta, b_meta) {
-                (Some(a_meta), Some(b_meta)) => {
-                    b_meta.modified().unwrap_or(std::time::UNIX_EPOCH)
-                        .cmp(&a_meta.modified().unwrap_or(std::time::UNIX_EPOCH))
-                }
+                (Some(a_meta), Some(b_meta)) => b_meta
+                    .modified()
+                    .unwrap_or(std::time::UNIX_EPOCH)
+                    .cmp(&a_meta.modified().unwrap_or(std::time::UNIX_EPOCH)),
                 _ => std::cmp::Ordering::Equal,
             }
         });
@@ -443,8 +434,14 @@ mod tests {
         let paths = ConfigPathManager::resolve_standard_paths(&distribution)?;
 
         assert!(paths.hyprland_config_dir.to_string_lossy().contains("hypr"));
-        assert!(paths.hyprland_config_file.to_string_lossy().contains("hyprland.conf"));
-        assert!(paths.app_config_dir.to_string_lossy().contains("r-hyprconfig"));
+        assert!(paths
+            .hyprland_config_file
+            .to_string_lossy()
+            .contains("hyprland.conf"));
+        assert!(paths
+            .app_config_dir
+            .to_string_lossy()
+            .contains("r-hyprconfig"));
 
         Ok(())
     }
@@ -468,8 +465,14 @@ mod tests {
         let paths = ConfigPathManager::resolve_nixos_paths(&distribution)?;
 
         assert!(paths.hyprland_config_dir.to_string_lossy().contains("hypr"));
-        assert!(paths.hyprland_config_file.to_string_lossy().contains("hyprland.conf"));
-        assert!(paths.app_config_dir.to_string_lossy().contains("r-hyprconfig"));
+        assert!(paths
+            .hyprland_config_file
+            .to_string_lossy()
+            .contains("hyprland.conf"));
+        assert!(paths
+            .app_config_dir
+            .to_string_lossy()
+            .contains("r-hyprconfig"));
 
         Ok(())
     }
@@ -508,7 +511,7 @@ mod tests {
     fn test_get_export_path() -> Result<()> {
         // Test different export formats
         let formats = ["nix", "nixos", "toml", "json", "conf", "hyprland", "yaml"];
-        
+
         for format in &formats {
             let _ = ConfigPathManager::get_export_path("test_config", format);
         }

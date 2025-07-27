@@ -173,7 +173,7 @@ pub struct UI {
     pub preview_debounce_delay: std::time::Duration,
     pub last_preview_time: std::time::Instant,
     pub pending_preview_change: Option<(String, String)>, // (key, value)
-    pub preview_original_value: Option<String>, // Store original value for rollback
+    pub preview_original_value: Option<String>,           // Store original value for rollback
     pub pending_deletion: Option<(FocusedPanel, String)>, // (panel, key) for items pending deletion
 
     // Lazy loading / pagination support
@@ -1261,9 +1261,9 @@ impl UI {
         }
         if !misc_items.is_empty() {
             self.config_items.insert(FocusedPanel::Misc, misc_items);
-            
-        // Import configuration panel items
-        let import_items = vec![
+
+            // Import configuration panel items
+            let import_items = vec![
             ConfigItem {
                 key: "local_file".to_string(),
                 value: "Select a file to import".to_string(),
@@ -1309,72 +1309,77 @@ impl UI {
                 ],
             },
         ];
-        self.config_items.insert(FocusedPanel::Import, import_items);
-        
-        // Export configuration panel items
-        let export_items = vec![
-            ConfigItem {
-                key: "hyprland_conf".to_string(),
-                value: "Standard Hyprland format".to_string(),
-                description: "Export as standard hyprland.conf file compatible with Hyprland".to_string(),
-                data_type: ConfigDataType::String,
-                suggestions: vec![
-                    "hyprland_export.conf".to_string(),
-                    "my_hyprland_config.conf".to_string(),
-                ],
-            },
-            ConfigItem {
-                key: "json_format".to_string(),
-                value: "Structured JSON format".to_string(),
-                description: "Export as JSON with hierarchical structure and metadata".to_string(),
-                data_type: ConfigDataType::String,
-                suggestions: vec![
-                    "config_export.json".to_string(),
-                    "hyprland_backup.json".to_string(),
-                ],
-            },
-            ConfigItem {
-                key: "toml_format".to_string(),
-                value: "Human-readable TOML".to_string(),
-                description: "Export as TOML configuration file for easy editing".to_string(),
-                data_type: ConfigDataType::String,
-                suggestions: vec![
-                    "config_export.toml".to_string(),
-                    "hyprland_settings.toml".to_string(),
-                ],
-            },
-            ConfigItem {
-                key: "yaml_format".to_string(),
-                value: "Clean YAML format".to_string(),
-                description: "Export as YAML with clean indentation and comments".to_string(),
-                data_type: ConfigDataType::String,
-                suggestions: vec![
-                    "config_export.yaml".to_string(),
-                    "hyprland_config.yml".to_string(),
-                ],
-            },
-            ConfigItem {
-                key: "rhypr_format".to_string(),
-                value: "R-Hyprconfig native format".to_string(),
-                description: "Export in r-hyprconfig native format with full feature support".to_string(),
-                data_type: ConfigDataType::String,
-                suggestions: vec![
-                    "config_backup.rhypr".to_string(),
-                    "my_hyprland_setup.rhypr".to_string(),
-                ],
-            },
-            ConfigItem {
-                key: "nixos_format".to_string(),
-                value: "NixOS declarative module".to_string(),
-                description: "Export as NixOS configuration module for declarative system management".to_string(),
-                data_type: ConfigDataType::String,
-                suggestions: vec![
-                    "hyprland_module.nix".to_string(),
-                    "home_manager_hyprland.nix".to_string(),
-                ],
-            },
-        ];
-        self.config_items.insert(FocusedPanel::Export, export_items);
+            self.config_items.insert(FocusedPanel::Import, import_items);
+
+            // Export configuration panel items
+            let export_items = vec![
+                ConfigItem {
+                    key: "hyprland_conf".to_string(),
+                    value: "Standard Hyprland format".to_string(),
+                    description: "Export as standard hyprland.conf file compatible with Hyprland"
+                        .to_string(),
+                    data_type: ConfigDataType::String,
+                    suggestions: vec![
+                        "hyprland_export.conf".to_string(),
+                        "my_hyprland_config.conf".to_string(),
+                    ],
+                },
+                ConfigItem {
+                    key: "json_format".to_string(),
+                    value: "Structured JSON format".to_string(),
+                    description: "Export as JSON with hierarchical structure and metadata"
+                        .to_string(),
+                    data_type: ConfigDataType::String,
+                    suggestions: vec![
+                        "config_export.json".to_string(),
+                        "hyprland_backup.json".to_string(),
+                    ],
+                },
+                ConfigItem {
+                    key: "toml_format".to_string(),
+                    value: "Human-readable TOML".to_string(),
+                    description: "Export as TOML configuration file for easy editing".to_string(),
+                    data_type: ConfigDataType::String,
+                    suggestions: vec![
+                        "config_export.toml".to_string(),
+                        "hyprland_settings.toml".to_string(),
+                    ],
+                },
+                ConfigItem {
+                    key: "yaml_format".to_string(),
+                    value: "Clean YAML format".to_string(),
+                    description: "Export as YAML with clean indentation and comments".to_string(),
+                    data_type: ConfigDataType::String,
+                    suggestions: vec![
+                        "config_export.yaml".to_string(),
+                        "hyprland_config.yml".to_string(),
+                    ],
+                },
+                ConfigItem {
+                    key: "rhypr_format".to_string(),
+                    value: "R-Hyprconfig native format".to_string(),
+                    description: "Export in r-hyprconfig native format with full feature support"
+                        .to_string(),
+                    data_type: ConfigDataType::String,
+                    suggestions: vec![
+                        "config_backup.rhypr".to_string(),
+                        "my_hyprland_setup.rhypr".to_string(),
+                    ],
+                },
+                ConfigItem {
+                    key: "nixos_format".to_string(),
+                    value: "NixOS declarative module".to_string(),
+                    description:
+                        "Export as NixOS configuration module for declarative system management"
+                            .to_string(),
+                    data_type: ConfigDataType::String,
+                    suggestions: vec![
+                        "hyprland_module.nix".to_string(),
+                        "home_manager_hyprland.nix".to_string(),
+                    ],
+                },
+            ];
+            self.config_items.insert(FocusedPanel::Export, export_items);
         }
     }
 
@@ -4956,9 +4961,10 @@ impl UI {
         match self.import_export_mode {
             ImportExportMode::SelectSource => {
                 let content = vec![
-                    Line::from(vec![
-                        Span::styled("Select Import Source:", self.theme.header_style().bold()),
-                    ]),
+                    Line::from(vec![Span::styled(
+                        "Select Import Source:",
+                        self.theme.header_style().bold(),
+                    )]),
                     Line::raw(""),
                     Line::from(vec![
                         Span::styled("1. ", Style::default().fg(self.theme.accent_primary).bold()),
@@ -5015,16 +5021,17 @@ impl UI {
                         height: 2,
                     };
 
-                    let instructions = Paragraph::new(vec![
-                        Line::from(vec![
-                            Span::styled("↑↓", Style::default().fg(self.theme.accent_primary).bold()),
-                            Span::raw(" scroll, "),
-                            Span::styled("Enter", Style::default().fg(self.theme.accent_success).bold()),
-                            Span::raw(" to import, "),
-                            Span::styled("Esc", Style::default().fg(self.theme.accent_warning).bold()),
-                            Span::raw(" to go back"),
-                        ])
-                    ])
+                    let instructions = Paragraph::new(vec![Line::from(vec![
+                        Span::styled("↑↓", Style::default().fg(self.theme.accent_primary).bold()),
+                        Span::raw(" scroll, "),
+                        Span::styled(
+                            "Enter",
+                            Style::default().fg(self.theme.accent_success).bold(),
+                        ),
+                        Span::raw(" to import, "),
+                        Span::styled("Esc", Style::default().fg(self.theme.accent_warning).bold()),
+                        Span::raw(" to go back"),
+                    ])])
                     .style(Style::default().fg(self.theme.fg_secondary));
 
                     f.render_widget(instructions, instructions_area);
@@ -5032,9 +5039,10 @@ impl UI {
             }
             ImportExportMode::Execute => {
                 let content = vec![
-                    Line::from(vec![
-                        Span::styled("Import Complete!", Style::default().fg(self.theme.accent_success).bold()),
-                    ]),
+                    Line::from(vec![Span::styled(
+                        "Import Complete!",
+                        Style::default().fg(self.theme.accent_success).bold(),
+                    )]),
                     Line::raw(""),
                     Line::raw("The configuration has been imported successfully."),
                     Line::raw("Press Enter or Esc to close this dialog."),
@@ -5071,9 +5079,10 @@ impl UI {
         match self.import_export_mode {
             ImportExportMode::SelectFormat => {
                 let content = vec![
-                    Line::from(vec![
-                        Span::styled("Select Export Format:", Style::default().fg(self.theme.fg_primary).bold()),
-                    ]),
+                    Line::from(vec![Span::styled(
+                        "Select Export Format:",
+                        Style::default().fg(self.theme.fg_primary).bold(),
+                    )]),
                     Line::raw(""),
                     Line::from(vec![
                         Span::styled("1. ", Style::default().fg(self.theme.accent_primary).bold()),
@@ -5138,16 +5147,17 @@ impl UI {
                         height: 2,
                     };
 
-                    let instructions = Paragraph::new(vec![
-                        Line::from(vec![
-                            Span::styled("↑↓", Style::default().fg(self.theme.accent_primary).bold()),
-                            Span::raw(" scroll, "),
-                            Span::styled("Enter", Style::default().fg(self.theme.accent_success).bold()),
-                            Span::raw(" to export, "),
-                            Span::styled("Esc", Style::default().fg(self.theme.accent_warning).bold()),
-                            Span::raw(" to go back"),
-                        ])
-                    ])
+                    let instructions = Paragraph::new(vec![Line::from(vec![
+                        Span::styled("↑↓", Style::default().fg(self.theme.accent_primary).bold()),
+                        Span::raw(" scroll, "),
+                        Span::styled(
+                            "Enter",
+                            Style::default().fg(self.theme.accent_success).bold(),
+                        ),
+                        Span::raw(" to export, "),
+                        Span::styled("Esc", Style::default().fg(self.theme.accent_warning).bold()),
+                        Span::raw(" to go back"),
+                    ])])
                     .style(Style::default().fg(self.theme.fg_secondary));
 
                     f.render_widget(instructions, instructions_area);
@@ -5155,9 +5165,10 @@ impl UI {
             }
             ImportExportMode::Execute => {
                 let content = vec![
-                    Line::from(vec![
-                        Span::styled("Export Complete!", Style::default().fg(self.theme.accent_success).bold()),
-                    ]),
+                    Line::from(vec![Span::styled(
+                        "Export Complete!",
+                        Style::default().fg(self.theme.accent_success).bold(),
+                    )]),
                     Line::raw(""),
                     Line::raw("The configuration has been exported successfully."),
                     Line::raw("Press Enter or Esc to close this dialog."),
@@ -5207,7 +5218,7 @@ impl UI {
         let hypr_key = hypr_key.unwrap();
 
         let now = std::time::Instant::now();
-        
+
         // Store the original value if this is the first preview change
         if self.preview_original_value.is_none() {
             // Get current value from hyprctl using the proper hyprctl key
@@ -5240,7 +5251,7 @@ impl UI {
         }
 
         let now = std::time::Instant::now();
-        
+
         // Check if enough time has passed for debouncing
         if now.duration_since(self.last_preview_time) >= self.preview_debounce_delay {
             if let Some((key, value)) = &self.pending_preview_change {
@@ -5262,7 +5273,10 @@ impl UI {
         Ok(())
     }
 
-    pub async fn cancel_preview(&mut self, hyprctl: &crate::hyprctl::HyprCtl) -> anyhow::Result<()> {
+    pub async fn cancel_preview(
+        &mut self,
+        hyprctl: &crate::hyprctl::HyprCtl,
+    ) -> anyhow::Result<()> {
         if let Some(original_value) = &self.preview_original_value {
             if let Some((key, _)) = &self.pending_preview_change {
                 // Restore original value
@@ -5290,7 +5304,8 @@ impl UI {
         }
 
         if self.has_pending_preview() {
-            let remaining = self.preview_debounce_delay
+            let remaining = self
+                .preview_debounce_delay
                 .saturating_sub(self.last_preview_time.elapsed());
             if remaining > std::time::Duration::ZERO {
                 return format!("Preview: Pending ({:.1}s)", remaining.as_secs_f32());
@@ -5338,14 +5353,20 @@ impl UI {
             value: "SUPER, , exec, ".to_string(),
             description: "New keybinding".to_string(),
             data_type: ConfigDataType::String,
-            suggestions: vec!["SUPER".to_string(), "ALT".to_string(), "CTRL".to_string(), "SHIFT".to_string()],
+            suggestions: vec![
+                "SUPER".to_string(),
+                "ALT".to_string(),
+                "CTRL".to_string(),
+                "SHIFT".to_string(),
+            ],
         };
-        
+
         // Add the new item to the Binds panel
-        self.config_items.entry(crate::app::FocusedPanel::Binds)
+        self.config_items
+            .entry(crate::app::FocusedPanel::Binds)
             .or_default()
             .push(empty_item);
-            
+
         // Select the newly added item and start editing
         if let Some(items) = self.config_items.get(&crate::app::FocusedPanel::Binds) {
             self.binds_list_state.select(Some(items.len() - 1));
@@ -5361,16 +5382,25 @@ impl UI {
             value: "float, ^()$".to_string(),
             description: "New window rule".to_string(),
             data_type: ConfigDataType::String,
-            suggestions: vec!["float".to_string(), "size".to_string(), "opacity".to_string(), "workspace".to_string()],
+            suggestions: vec![
+                "float".to_string(),
+                "size".to_string(),
+                "opacity".to_string(),
+                "workspace".to_string(),
+            ],
         };
-        
+
         // Add the new item to the WindowRules panel
-        self.config_items.entry(crate::app::FocusedPanel::WindowRules)
+        self.config_items
+            .entry(crate::app::FocusedPanel::WindowRules)
             .or_default()
             .push(empty_item);
-            
+
         // Select the newly added item and start editing
-        if let Some(items) = self.config_items.get(&crate::app::FocusedPanel::WindowRules) {
+        if let Some(items) = self
+            .config_items
+            .get(&crate::app::FocusedPanel::WindowRules)
+        {
             self.window_rules_list_state.select(Some(items.len() - 1));
         }
         // Note: start_editing is async, but we can't await here since this method is not async
@@ -5384,14 +5414,19 @@ impl UI {
             value: "blur, ".to_string(),
             description: "New layer rule".to_string(),
             data_type: ConfigDataType::String,
-            suggestions: vec!["blur".to_string(), "ignorezero".to_string(), "ignorealpha".to_string()],
+            suggestions: vec![
+                "blur".to_string(),
+                "ignorezero".to_string(),
+                "ignorealpha".to_string(),
+            ],
         };
-        
+
         // Add the new item to the LayerRules panel
-        self.config_items.entry(crate::app::FocusedPanel::LayerRules)
+        self.config_items
+            .entry(crate::app::FocusedPanel::LayerRules)
             .or_default()
             .push(empty_item);
-            
+
         // Select the newly added item and start editing
         if let Some(items) = self.config_items.get(&crate::app::FocusedPanel::LayerRules) {
             self.layer_rules_list_state.select(Some(items.len() - 1));
@@ -5423,7 +5458,7 @@ impl UI {
         if let Some(items) = self.config_items.get_mut(panel) {
             if let Some(index) = items.iter().position(|item| item.key == key) {
                 items.remove(index);
-                
+
                 // Adjust the selection if needed
                 let list_state = match panel {
                     crate::app::FocusedPanel::General => &mut self.general_list_state,
@@ -5437,7 +5472,7 @@ impl UI {
                     crate::app::FocusedPanel::Misc => &mut self.misc_list_state,
                     _ => return false,
                 };
-                
+
                 if let Some(selected) = list_state.selected() {
                     if selected >= items.len() && !items.is_empty() {
                         list_state.select(Some(items.len() - 1));

@@ -268,13 +268,17 @@ impl App {
             }
             KeyCode::Up => {
                 self.ui.scroll_up();
-                
+
                 // Trigger live preview if enabled
                 if self.ui.is_preview_mode() {
                     if let Some(item) = self.ui.get_selected_item() {
                         let item_key = item.key.clone();
                         let item_value = item.value.clone();
-                        if let Err(e) = self.ui.handle_preview_change(&item_key, &item_value, &self.hyprctl).await {
+                        if let Err(e) = self
+                            .ui
+                            .handle_preview_change(&item_key, &item_value, &self.hyprctl)
+                            .await
+                        {
                             eprintln!("Preview error: {}", e);
                         }
                     }
@@ -282,13 +286,17 @@ impl App {
             }
             KeyCode::Down => {
                 self.ui.scroll_down();
-                
+
                 // Trigger live preview if enabled
                 if self.ui.is_preview_mode() {
                     if let Some(item) = self.ui.get_selected_item() {
                         let item_key = item.key.clone();
                         let item_value = item.value.clone();
-                        if let Err(e) = self.ui.handle_preview_change(&item_key, &item_value, &self.hyprctl).await {
+                        if let Err(e) = self
+                            .ui
+                            .handle_preview_change(&item_key, &item_value, &self.hyprctl)
+                            .await
+                        {
                             eprintln!("Preview error: {}", e);
                         }
                     }
@@ -442,7 +450,8 @@ impl App {
                         self.ui.popup_message = "Item deleted successfully!".to_string();
                     } else {
                         self.ui.show_popup = true;
-                        self.ui.popup_message = "Failed to delete item - item not found.".to_string();
+                        self.ui.popup_message =
+                            "Failed to delete item - item not found.".to_string();
                     }
                     self.ui.pending_deletion = None;
                 }
@@ -472,7 +481,7 @@ impl App {
         // Check preview mode and get editing key before match to avoid borrowing issues
         let preview_enabled = self.ui.is_preview_mode();
         let editing_key = self.ui.editing_item.as_ref().map(|(_, key)| key.clone());
-        
+
         // Handle preview trigger after making changes
         let mut should_trigger_preview = false;
         let mut preview_value = String::new();
@@ -506,7 +515,7 @@ impl App {
                     KeyCode::Char(c) => {
                         current_value.insert(*cursor_pos, c);
                         *cursor_pos += 1;
-                        
+
                         // Set up for preview trigger
                         if preview_enabled {
                             should_trigger_preview = true;
@@ -517,7 +526,7 @@ impl App {
                         if *cursor_pos > 0 {
                             *cursor_pos -= 1;
                             current_value.remove(*cursor_pos);
-                            
+
                             // Set up for preview trigger
                             if preview_enabled {
                                 should_trigger_preview = true;
@@ -562,7 +571,7 @@ impl App {
                     }
                     KeyCode::Char(' ') => {
                         *current_value = !*current_value;
-                        
+
                         if preview_enabled {
                             should_trigger_preview = true;
                             preview_value = current_value.to_string();
@@ -593,7 +602,7 @@ impl App {
                         } else {
                             *selected = options.len() - 1;
                         }
-                        
+
                         if preview_enabled {
                             should_trigger_preview = true;
                             preview_value = options[*selected].clone();
@@ -605,7 +614,7 @@ impl App {
                         } else {
                             *selected = 0;
                         }
-                        
+
                         if preview_enabled {
                             should_trigger_preview = true;
                             preview_value = options[*selected].clone();
@@ -637,7 +646,7 @@ impl App {
                     }
                     KeyCode::Left => {
                         *current_value = (*current_value - *step).max(*min);
-                        
+
                         if preview_enabled {
                             should_trigger_preview = true;
                             preview_value = if current_value.fract() == 0.0 {
@@ -649,7 +658,7 @@ impl App {
                     }
                     KeyCode::Right => {
                         *current_value = (*current_value + *step).min(*max);
-                        
+
                         if preview_enabled {
                             should_trigger_preview = true;
                             preview_value = if current_value.fract() == 0.0 {
@@ -661,7 +670,7 @@ impl App {
                     }
                     KeyCode::Home => {
                         *current_value = *min;
-                        
+
                         if preview_enabled {
                             should_trigger_preview = true;
                             preview_value = if current_value.fract() == 0.0 {
@@ -673,7 +682,7 @@ impl App {
                     }
                     KeyCode::End => {
                         *current_value = *max;
-                        
+
                         if preview_enabled {
                             should_trigger_preview = true;
                             preview_value = if current_value.fract() == 0.0 {
@@ -744,22 +753,20 @@ impl App {
                             }
                         }
                     }
-                    KeyCode::Backspace => {
-                        match editing_field {
-                            crate::ui::KeybindField::Key => {
-                                key_field.clear();
-                            }
-                            crate::ui::KeybindField::Dispatcher => {
-                                dispatcher.pop();
-                            }
-                            crate::ui::KeybindField::Args => {
-                                args.pop();
-                            }
-                            crate::ui::KeybindField::Modifiers => {
-                                modifiers.pop();
-                            }
+                    KeyCode::Backspace => match editing_field {
+                        crate::ui::KeybindField::Key => {
+                            key_field.clear();
                         }
-                    }
+                        crate::ui::KeybindField::Dispatcher => {
+                            dispatcher.pop();
+                        }
+                        crate::ui::KeybindField::Args => {
+                            args.pop();
+                        }
+                        crate::ui::KeybindField::Modifiers => {
+                            modifiers.pop();
+                        }
+                    },
                     _ => {}
                 }
             }
@@ -791,26 +798,22 @@ impl App {
                             crate::ui::RuleField::Action => crate::ui::RuleField::Pattern,
                         };
                     }
-                    KeyCode::Char(c) => {
-                        match editing_field {
-                            crate::ui::RuleField::Pattern => {
-                                pattern.push(c);
-                            }
-                            crate::ui::RuleField::Action => {
-                                action.push(c);
-                            }
+                    KeyCode::Char(c) => match editing_field {
+                        crate::ui::RuleField::Pattern => {
+                            pattern.push(c);
                         }
-                    }
-                    KeyCode::Backspace => {
-                        match editing_field {
-                            crate::ui::RuleField::Pattern => {
-                                pattern.pop();
-                            }
-                            crate::ui::RuleField::Action => {
-                                action.pop();
-                            }
+                        crate::ui::RuleField::Action => {
+                            action.push(c);
                         }
-                    }
+                    },
+                    KeyCode::Backspace => match editing_field {
+                        crate::ui::RuleField::Pattern => {
+                            pattern.pop();
+                        }
+                        crate::ui::RuleField::Action => {
+                            action.pop();
+                        }
+                    },
                     _ => {}
                 }
             }
@@ -824,7 +827,11 @@ impl App {
         // Handle preview after the match to avoid borrowing issues
         if should_trigger_preview {
             if let Some(key) = editing_key {
-                if let Err(e) = self.ui.handle_preview_change(&key, &preview_value, &self.hyprctl).await {
+                if let Err(e) = self
+                    .ui
+                    .handle_preview_change(&key, &preview_value, &self.hyprctl)
+                    .await
+                {
                     eprintln!("Preview error: {}", e);
                 }
             }
@@ -995,7 +1002,6 @@ impl App {
 
         Ok(())
     }
-
 
     async fn export_config_to_file(&mut self) -> Result<String> {
         use chrono::Utc;
@@ -1173,7 +1179,6 @@ impl App {
 
         Ok(imported_count)
     }
-
 
     async fn update_nixos_export_preview(&mut self) {
         use crate::nixos::ConfigConverter;
@@ -1757,152 +1762,141 @@ impl App {
 
     async fn handle_import_dialog_key(&mut self, key: KeyCode) -> Result<()> {
         use crate::ui::{ImportExportMode, ImportSourceType};
-        
+
         match self.ui.import_export_mode {
-            ImportExportMode::SelectSource => {
-                match key {
-                    KeyCode::Char('1') => {
-                        self.ui.selected_import_source = ImportSourceType::LocalFile;
-                        self.ui.import_export_mode = ImportExportMode::Preview;
-                        self.generate_import_preview().await;
-                    }
-                    KeyCode::Char('2') => {
-                        self.ui.selected_import_source = ImportSourceType::LocalFolder;
-                        self.ui.import_export_mode = ImportExportMode::Preview;
-                        self.generate_import_preview().await;
-                    }
-                    KeyCode::Char('3') => {
-                        self.ui.selected_import_source = ImportSourceType::GitHubRepository;
-                        self.ui.import_export_mode = ImportExportMode::Preview;
-                        self.generate_import_preview().await;
-                    }
-                    KeyCode::Char('4') => {
-                        self.ui.selected_import_source = ImportSourceType::UrlDownload;
-                        self.ui.import_export_mode = ImportExportMode::Preview;
-                        self.generate_import_preview().await;
-                    }
-                    KeyCode::Esc => {
-                        self.ui.show_import_dialog = false;
-                        self.ui.import_preview = None;
-                    }
-                    _ => {}
+            ImportExportMode::SelectSource => match key {
+                KeyCode::Char('1') => {
+                    self.ui.selected_import_source = ImportSourceType::LocalFile;
+                    self.ui.import_export_mode = ImportExportMode::Preview;
+                    self.generate_import_preview().await;
                 }
-            }
-            ImportExportMode::Preview => {
-                match key {
-                    KeyCode::Enter => {
-                        self.ui.import_export_mode = ImportExportMode::Execute;
-                        self.execute_import().await;
-                    }
-                    KeyCode::Esc => {
-                        self.ui.import_export_mode = ImportExportMode::SelectSource;
-                        self.ui.import_preview = None;
-                    }
-                    KeyCode::Up => {
-                        if self.ui.import_export_scroll > 0 {
-                            self.ui.import_export_scroll -= 1;
-                        }
-                    }
-                    KeyCode::Down => {
-                        self.ui.import_export_scroll += 1;
-                    }
-                    _ => {}
+                KeyCode::Char('2') => {
+                    self.ui.selected_import_source = ImportSourceType::LocalFolder;
+                    self.ui.import_export_mode = ImportExportMode::Preview;
+                    self.generate_import_preview().await;
                 }
-            }
-            ImportExportMode::Execute => {
-                match key {
-                    KeyCode::Enter | KeyCode::Esc => {
-                        self.ui.show_import_dialog = false;
-                        self.ui.import_preview = None;
-                        self.ui.import_export_scroll = 0;
-                    }
-                    _ => {}
+                KeyCode::Char('3') => {
+                    self.ui.selected_import_source = ImportSourceType::GitHubRepository;
+                    self.ui.import_export_mode = ImportExportMode::Preview;
+                    self.generate_import_preview().await;
                 }
-            }
+                KeyCode::Char('4') => {
+                    self.ui.selected_import_source = ImportSourceType::UrlDownload;
+                    self.ui.import_export_mode = ImportExportMode::Preview;
+                    self.generate_import_preview().await;
+                }
+                KeyCode::Esc => {
+                    self.ui.show_import_dialog = false;
+                    self.ui.import_preview = None;
+                }
+                _ => {}
+            },
+            ImportExportMode::Preview => match key {
+                KeyCode::Enter => {
+                    self.ui.import_export_mode = ImportExportMode::Execute;
+                    self.execute_import().await;
+                }
+                KeyCode::Esc => {
+                    self.ui.import_export_mode = ImportExportMode::SelectSource;
+                    self.ui.import_preview = None;
+                }
+                KeyCode::Up => {
+                    if self.ui.import_export_scroll > 0 {
+                        self.ui.import_export_scroll -= 1;
+                    }
+                }
+                KeyCode::Down => {
+                    self.ui.import_export_scroll += 1;
+                }
+                _ => {}
+            },
+            ImportExportMode::Execute => match key {
+                KeyCode::Enter | KeyCode::Esc => {
+                    self.ui.show_import_dialog = false;
+                    self.ui.import_preview = None;
+                    self.ui.import_export_scroll = 0;
+                }
+                _ => {}
+            },
             _ => {}
         }
         Ok(())
     }
 
     async fn handle_export_dialog_key(&mut self, key: KeyCode) -> Result<()> {
-        use crate::ui::{ImportExportMode, ExportFormatType};
-        
+        use crate::ui::{ExportFormatType, ImportExportMode};
+
         match self.ui.import_export_mode {
-            ImportExportMode::SelectFormat => {
-                match key {
-                    KeyCode::Char('1') => {
-                        self.ui.selected_export_format = ExportFormatType::HyprlandConf;
-                        self.ui.import_export_mode = ImportExportMode::Preview;
-                        self.generate_export_preview().await;
-                    }
-                    KeyCode::Char('2') => {
-                        self.ui.selected_export_format = ExportFormatType::Json;
-                        self.ui.import_export_mode = ImportExportMode::Preview;
-                        self.generate_export_preview().await;
-                    }
-                    KeyCode::Char('3') => {
-                        self.ui.selected_export_format = ExportFormatType::Toml;
-                        self.ui.import_export_mode = ImportExportMode::Preview;
-                        self.generate_export_preview().await;
-                    }
-                    KeyCode::Char('4') => {
-                        self.ui.selected_export_format = ExportFormatType::Yaml;
-                        self.ui.import_export_mode = ImportExportMode::Preview;
-                        self.generate_export_preview().await;
-                    }
-                    KeyCode::Char('5') => {
-                        self.ui.selected_export_format = ExportFormatType::RHyprConfig;
-                        self.ui.import_export_mode = ImportExportMode::Preview;
-                        self.generate_export_preview().await;
-                    }
-                    KeyCode::Char('6') => {
-                        self.ui.selected_export_format = ExportFormatType::NixOS;
-                        if self.config.nixos_mode {
-                            self.ui.import_export_mode = ImportExportMode::Preview;
-                            self.generate_export_preview().await;
-                        } else {
-                            self.ui.show_popup = true;
-                            self.ui.popup_message = "NixOS export is only available on NixOS systems".to_string();
-                        }
-                    }
-                    KeyCode::Esc => {
-                        self.ui.show_export_dialog = false;
-                        self.ui.export_preview = None;
-                    }
-                    _ => {}
+            ImportExportMode::SelectFormat => match key {
+                KeyCode::Char('1') => {
+                    self.ui.selected_export_format = ExportFormatType::HyprlandConf;
+                    self.ui.import_export_mode = ImportExportMode::Preview;
+                    self.generate_export_preview().await;
                 }
-            }
-            ImportExportMode::Preview => {
-                match key {
-                    KeyCode::Enter => {
-                        self.ui.import_export_mode = ImportExportMode::Execute;
-                        self.execute_export().await;
-                    }
-                    KeyCode::Esc => {
-                        self.ui.import_export_mode = ImportExportMode::SelectFormat;
-                        self.ui.export_preview = None;
-                    }
-                    KeyCode::Up => {
-                        if self.ui.import_export_scroll > 0 {
-                            self.ui.import_export_scroll -= 1;
-                        }
-                    }
-                    KeyCode::Down => {
-                        self.ui.import_export_scroll += 1;
-                    }
-                    _ => {}
+                KeyCode::Char('2') => {
+                    self.ui.selected_export_format = ExportFormatType::Json;
+                    self.ui.import_export_mode = ImportExportMode::Preview;
+                    self.generate_export_preview().await;
                 }
-            }
-            ImportExportMode::Execute => {
-                match key {
-                    KeyCode::Enter | KeyCode::Esc => {
-                        self.ui.show_export_dialog = false;
-                        self.ui.export_preview = None;
-                        self.ui.import_export_scroll = 0;
-                    }
-                    _ => {}
+                KeyCode::Char('3') => {
+                    self.ui.selected_export_format = ExportFormatType::Toml;
+                    self.ui.import_export_mode = ImportExportMode::Preview;
+                    self.generate_export_preview().await;
                 }
-            }
+                KeyCode::Char('4') => {
+                    self.ui.selected_export_format = ExportFormatType::Yaml;
+                    self.ui.import_export_mode = ImportExportMode::Preview;
+                    self.generate_export_preview().await;
+                }
+                KeyCode::Char('5') => {
+                    self.ui.selected_export_format = ExportFormatType::RHyprConfig;
+                    self.ui.import_export_mode = ImportExportMode::Preview;
+                    self.generate_export_preview().await;
+                }
+                KeyCode::Char('6') => {
+                    self.ui.selected_export_format = ExportFormatType::NixOS;
+                    if self.config.nixos_mode {
+                        self.ui.import_export_mode = ImportExportMode::Preview;
+                        self.generate_export_preview().await;
+                    } else {
+                        self.ui.show_popup = true;
+                        self.ui.popup_message =
+                            "NixOS export is only available on NixOS systems".to_string();
+                    }
+                }
+                KeyCode::Esc => {
+                    self.ui.show_export_dialog = false;
+                    self.ui.export_preview = None;
+                }
+                _ => {}
+            },
+            ImportExportMode::Preview => match key {
+                KeyCode::Enter => {
+                    self.ui.import_export_mode = ImportExportMode::Execute;
+                    self.execute_export().await;
+                }
+                KeyCode::Esc => {
+                    self.ui.import_export_mode = ImportExportMode::SelectFormat;
+                    self.ui.export_preview = None;
+                }
+                KeyCode::Up => {
+                    if self.ui.import_export_scroll > 0 {
+                        self.ui.import_export_scroll -= 1;
+                    }
+                }
+                KeyCode::Down => {
+                    self.ui.import_export_scroll += 1;
+                }
+                _ => {}
+            },
+            ImportExportMode::Execute => match key {
+                KeyCode::Enter | KeyCode::Esc => {
+                    self.ui.show_export_dialog = false;
+                    self.ui.export_preview = None;
+                    self.ui.import_export_scroll = 0;
+                }
+                _ => {}
+            },
             _ => {}
         }
         Ok(())
@@ -1944,11 +1938,12 @@ impl App {
                         item.data_type,
                         item.suggestions.join(", ")
                     );
-                    
+
                     // Generate preview of what the setting would look like with a different value
                     let after_text = self.generate_setting_preview_text(item);
-                    
-                    self.ui.show_setting_preview(setting_name, before_text, after_text);
+
+                    self.ui
+                        .show_setting_preview(setting_name, before_text, after_text);
                 } else {
                     self.ui.show_popup = true;
                     self.ui.popup_message = "No setting selected for preview".to_string();
@@ -1959,7 +1954,8 @@ impl App {
             }
         } else {
             self.ui.show_popup = true;
-            self.ui.popup_message = "No setting selected. Use ↑↓ to select a setting first".to_string();
+            self.ui.popup_message =
+                "No setting selected. Use ↑↓ to select a setting first".to_string();
         }
     }
 
@@ -2003,118 +1999,129 @@ impl App {
 
     async fn generate_import_preview(&mut self) {
         use crate::ui::ImportSourceType;
-        
+
         let preview_text = match self.ui.selected_import_source {
-            ImportSourceType::LocalFile => {
-                "Import from Local File\n\n\
+            ImportSourceType::LocalFile => "Import from Local File\n\n\
                 This will:\n\
                 • Open a file browser to select a Hyprland config file\n\
                 • Parse and validate the configuration\n\
                 • Show a preview of what will be imported\n\
                 • Allow you to choose which settings to import\n\n\
-                Supported formats: .conf, .toml, .json, .yaml".to_string()
-            }
-            ImportSourceType::LocalFolder => {
-                "Import from Local Folder\n\n\
+                Supported formats: .conf, .toml, .json, .yaml"
+                .to_string(),
+            ImportSourceType::LocalFolder => "Import from Local Folder\n\n\
                 This will:\n\
                 • Scan a folder for Hyprland configuration files\n\
                 • Detect and parse all compatible files\n\
                 • Show a comprehensive preview of all settings\n\
-                • Allow selective import of individual files or settings".to_string()
-            }
-            ImportSourceType::GitHubRepository => {
-                "Import from GitHub Repository\n\n\
+                • Allow selective import of individual files or settings"
+                .to_string(),
+            ImportSourceType::GitHubRepository => "Import from GitHub Repository\n\n\
                 This will:\n\
                 • Connect to a GitHub repository\n\
                 • Download and analyze Hyprland configurations\n\
                 • Parse dotfiles and config repositories\n\
                 • Import compatible settings and assets\n\n\
-                Example: https://github.com/user/dotfiles".to_string()
-            }
-            ImportSourceType::UrlDownload => {
-                "Import from URL\n\n\
+                Example: https://github.com/user/dotfiles"
+                .to_string(),
+            ImportSourceType::UrlDownload => "Import from URL\n\n\
                 This will:\n\
                 • Download configuration from a direct URL\n\
                 • Validate and parse the content\n\
                 • Show preview before importing\n\
-                • Support for pastebin, gists, and direct links".to_string()
-            }
+                • Support for pastebin, gists, and direct links"
+                .to_string(),
         };
-        
+
         self.ui.import_preview = Some(preview_text);
     }
 
     async fn generate_export_preview(&mut self) {
         use crate::ui::ExportFormatType;
-        
+
         let config_changes = self.ui.collect_all_config_changes();
         let keybinds = self.ui.collect_keybinds();
         let window_rules = self.ui.collect_window_rules();
         let layer_rules = self.ui.collect_layer_rules();
-        
+
         let preview_text = match self.ui.selected_export_format {
             ExportFormatType::HyprlandConf => {
-                format!("Export as Hyprland Configuration\n\n\
+                format!(
+                    "Export as Hyprland Configuration\n\n\
                 This will create a standard hyprland.conf file with:\n\
                 • {} configuration options\n\
                 • {} keybinds\n\
                 • {} window rules\n\
                 • {} layer rules\n\n\
                 Output: ~/.config/r-hyprconfig/exports/hyprland_export_[timestamp].conf",
-                config_changes.len(), keybinds.len(), window_rules.len(), layer_rules.len())
+                    config_changes.len(),
+                    keybinds.len(),
+                    window_rules.len(),
+                    layer_rules.len()
+                )
             }
             ExportFormatType::Json => {
-                format!("Export as JSON\n\n\
+                format!(
+                    "Export as JSON\n\n\
                 This will create a structured JSON file with:\n\
                 • Hierarchical configuration structure\n\
                 • Easy parsing for other tools\n\
                 • Metadata and versioning information\n\
                 • {} total configuration items\n\n\
                 Output: ~/.config/r-hyprconfig/exports/config_export_[timestamp].json",
-                config_changes.len() + keybinds.len() + window_rules.len() + layer_rules.len())
+                    config_changes.len() + keybinds.len() + window_rules.len() + layer_rules.len()
+                )
             }
             ExportFormatType::Toml => {
-                format!("Export as TOML\n\n\
+                format!(
+                    "Export as TOML\n\n\
                 This will create a TOML configuration file with:\n\
                 • Human-readable format\n\
                 • Section-based organization\n\
                 • Easy manual editing\n\
                 • {} total configuration items\n\n\
                 Output: ~/.config/r-hyprconfig/exports/config_export_[timestamp].toml",
-                config_changes.len() + keybinds.len() + window_rules.len() + layer_rules.len())
+                    config_changes.len() + keybinds.len() + window_rules.len() + layer_rules.len()
+                )
             }
             ExportFormatType::Yaml => {
-                format!("Export as YAML\n\n\
+                format!(
+                    "Export as YAML\n\n\
                 This will create a YAML configuration file with:\n\
                 • Clean, indented structure\n\
                 • Comments and documentation\n\
                 • Machine and human readable\n\
                 • {} total configuration items\n\n\
                 Output: ~/.config/r-hyprconfig/exports/config_export_[timestamp].yaml",
-                config_changes.len() + keybinds.len() + window_rules.len() + layer_rules.len())
+                    config_changes.len() + keybinds.len() + window_rules.len() + layer_rules.len()
+                )
             }
             ExportFormatType::RHyprConfig => {
-                format!("Export as R-Hyprconfig Format\n\n\
+                format!(
+                    "Export as R-Hyprconfig Format\n\n\
                 This will create an r-hyprconfig native format with:\n\
                 • Full feature compatibility\n\
                 • Theme and UI preferences\n\
                 • Import/export metadata\n\
                 • {} total configuration items\n\n\
                 Output: ~/.config/r-hyprconfig/exports/rhypr_export_[timestamp].rhypr",
-                config_changes.len() + keybinds.len() + window_rules.len() + layer_rules.len())
+                    config_changes.len() + keybinds.len() + window_rules.len() + layer_rules.len()
+                )
             }
             ExportFormatType::NixOS => {
-                format!("Export as NixOS Module\n\n\
+                format!(
+                    "Export as NixOS Module\n\n\
                 This will create a NixOS configuration module with:\n\
                 • Declarative configuration\n\
                 • Home Manager integration\n\
                 • Reproducible builds\n\
                 • {} total configuration items\n\n\
                 Output: ~/.config/r-hyprconfig/nixos-exports/hyprland_[timestamp].nix",
-                config_changes.len() + keybinds.len() + window_rules.len() + layer_rules.len())
+                    config_changes.len() + keybinds.len() + window_rules.len() + layer_rules.len()
+                )
             }
         };
-        
+
         self.ui.export_preview = Some(preview_text);
     }
 
@@ -2122,7 +2129,10 @@ impl App {
         match self.import_config_from_file().await {
             Ok(imported_count) => {
                 self.ui.show_popup = true;
-                self.ui.popup_message = format!("Imported {} configuration items successfully!", imported_count);
+                self.ui.popup_message = format!(
+                    "Imported {} configuration items successfully!",
+                    imported_count
+                );
             }
             Err(e) => {
                 self.ui.show_popup = true;
@@ -2163,7 +2173,8 @@ impl App {
             }
             crate::app::FocusedPanel::LayerRules => {
                 self.ui.show_popup = true;
-                self.ui.popup_message = "Add Layer Rule: Press Enter to add a new layer rule".to_string();
+                self.ui.popup_message =
+                    "Add Layer Rule: Press Enter to add a new layer rule".to_string();
                 // Start editing mode for adding new layer rule
                 self.ui.start_add_layer_rule();
             }
@@ -2182,7 +2193,10 @@ impl App {
                     let value = selected.value.clone();
                     let key = selected.key.clone();
                     self.ui.show_popup = true;
-                    self.ui.popup_message = format!("Delete Keybind: '{}' - Press 'Y' to confirm, any other key to cancel", value);
+                    self.ui.popup_message = format!(
+                        "Delete Keybind: '{}' - Press 'Y' to confirm, any other key to cancel",
+                        value
+                    );
                     // Set a flag to handle deletion on next key press
                     self.ui.pending_deletion = Some((self.ui.current_tab, key));
                 }
@@ -2192,7 +2206,10 @@ impl App {
                     let value = selected.value.clone();
                     let key = selected.key.clone();
                     self.ui.show_popup = true;
-                    self.ui.popup_message = format!("Delete Window Rule: '{}' - Press 'Y' to confirm, any other key to cancel", value);
+                    self.ui.popup_message = format!(
+                        "Delete Window Rule: '{}' - Press 'Y' to confirm, any other key to cancel",
+                        value
+                    );
                     self.ui.pending_deletion = Some((self.ui.current_tab, key));
                 }
             }
@@ -2201,7 +2218,10 @@ impl App {
                     let value = selected.value.clone();
                     let key = selected.key.clone();
                     self.ui.show_popup = true;
-                    self.ui.popup_message = format!("Delete Layer Rule: '{}' - Press 'Y' to confirm, any other key to cancel", value);
+                    self.ui.popup_message = format!(
+                        "Delete Layer Rule: '{}' - Press 'Y' to confirm, any other key to cancel",
+                        value
+                    );
                     self.ui.pending_deletion = Some((self.ui.current_tab, key));
                 }
             }

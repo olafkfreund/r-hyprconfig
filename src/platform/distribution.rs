@@ -64,7 +64,7 @@ impl DistributionInfo {
         if &self.distribution_type == base {
             return true;
         }
-        
+
         if let Some(ref id_like) = self.id_like {
             let base_id = match base {
                 DistributionType::Debian => "debian",
@@ -74,7 +74,7 @@ impl DistributionInfo {
                 DistributionType::Rhel => "rhel",
                 _ => return false,
             };
-            
+
             id_like.iter().any(|id| id == base_id)
         } else {
             false
@@ -101,13 +101,13 @@ impl DistributionDetector {
 
         // Detect distribution
         let info = Self::detect_internal()?;
-        
+
         // Cache the result
         {
             let mut cache = DISTRIBUTION_CACHE.lock().unwrap();
             *cache = Some(info.clone());
         }
-        
+
         Ok(info)
     }
 
@@ -144,13 +144,13 @@ impl DistributionDetector {
             .with_context(|| format!("Failed to read {:?}", path.as_ref()))?;
 
         let mut fields = HashMap::new();
-        
+
         for line in content.lines() {
             let line = line.trim();
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
-            
+
             if let Some((key, value)) = line.split_once('=') {
                 let key = key.trim();
                 let value = Self::unquote_value(value.trim());
@@ -158,14 +158,17 @@ impl DistributionDetector {
             }
         }
 
-        let id = fields.get("ID").cloned().unwrap_or_else(|| "unknown".to_string());
+        let id = fields
+            .get("ID")
+            .cloned()
+            .unwrap_or_else(|| "unknown".to_string());
         let name = fields.get("NAME").cloned().unwrap_or_else(|| id.clone());
-        
+
         let distribution_type = Self::determine_distribution_type(&id, &fields);
-        
-        let id_like = fields.get("ID_LIKE").map(|value| {
-            value.split_whitespace().map(|s| s.to_string()).collect()
-        });
+
+        let id_like = fields
+            .get("ID_LIKE")
+            .map(|value| value.split_whitespace().map(|s| s.to_string()).collect());
 
         Ok(DistributionInfo {
             distribution_type,
@@ -187,13 +190,13 @@ impl DistributionDetector {
             .with_context(|| format!("Failed to read {:?}", path.as_ref()))?;
 
         let mut fields = HashMap::new();
-        
+
         for line in content.lines() {
             let line = line.trim();
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
-            
+
             if let Some((key, value)) = line.split_once('=') {
                 let key = key.trim();
                 let value = Self::unquote_value(value.trim());
@@ -201,12 +204,14 @@ impl DistributionDetector {
             }
         }
 
-        let id = fields.get("DISTRIB_ID")
+        let id = fields
+            .get("DISTRIB_ID")
             .cloned()
             .unwrap_or_else(|| "unknown".to_string())
             .to_lowercase();
-        
-        let name = fields.get("DISTRIB_DESCRIPTION")
+
+        let name = fields
+            .get("DISTRIB_DESCRIPTION")
             .or_else(|| fields.get("DISTRIB_ID"))
             .cloned()
             .unwrap_or_else(|| id.clone());
@@ -232,17 +237,45 @@ impl DistributionDetector {
         let info = os_info::get();
         let os_type = info.os_type();
         let version = info.version().to_string();
-        
+
         let (distribution_type, id, name) = match os_type {
-            os_info::Type::Ubuntu => (DistributionType::Ubuntu, "ubuntu".to_string(), "Ubuntu".to_string()),
-            os_info::Type::Debian => (DistributionType::Debian, "debian".to_string(), "Debian".to_string()),
-            os_info::Type::Arch => (DistributionType::Arch, "arch".to_string(), "Arch Linux".to_string()),
-            os_info::Type::Fedora => (DistributionType::Fedora, "fedora".to_string(), "Fedora".to_string()),
-            os_info::Type::CentOS => (DistributionType::CentOS, "centos".to_string(), "CentOS".to_string()),
-            os_info::Type::Alpine => (DistributionType::Alpine, "alpine".to_string(), "Alpine Linux".to_string()),
+            os_info::Type::Ubuntu => (
+                DistributionType::Ubuntu,
+                "ubuntu".to_string(),
+                "Ubuntu".to_string(),
+            ),
+            os_info::Type::Debian => (
+                DistributionType::Debian,
+                "debian".to_string(),
+                "Debian".to_string(),
+            ),
+            os_info::Type::Arch => (
+                DistributionType::Arch,
+                "arch".to_string(),
+                "Arch Linux".to_string(),
+            ),
+            os_info::Type::Fedora => (
+                DistributionType::Fedora,
+                "fedora".to_string(),
+                "Fedora".to_string(),
+            ),
+            os_info::Type::CentOS => (
+                DistributionType::CentOS,
+                "centos".to_string(),
+                "CentOS".to_string(),
+            ),
+            os_info::Type::Alpine => (
+                DistributionType::Alpine,
+                "alpine".to_string(),
+                "Alpine Linux".to_string(),
+            ),
             _ => {
                 let name = format!("{:?}", os_type);
-                (DistributionType::Unknown(name.clone()), "unknown".to_string(), name)
+                (
+                    DistributionType::Unknown(name.clone()),
+                    "unknown".to_string(),
+                    name,
+                )
             }
         };
 
@@ -279,12 +312,12 @@ impl DistributionDetector {
                 // Priority order: more specific distributions first
                 if let Some(id_like) = fields.get("ID_LIKE") {
                     let likes: Vec<&str> = id_like.split_whitespace().collect();
-                    
+
                     // Check for Ubuntu first (more specific than Debian)
                     if likes.contains(&"ubuntu") {
                         return DistributionType::Ubuntu;
                     }
-                    
+
                     // Then check other distributions
                     for like in likes {
                         match like {
@@ -296,8 +329,11 @@ impl DistributionDetector {
                         }
                     }
                 }
-                
-                let name = fields.get("NAME").cloned().unwrap_or_else(|| id.to_string());
+
+                let name = fields
+                    .get("NAME")
+                    .cloned()
+                    .unwrap_or_else(|| id.to_string());
                 DistributionType::Unknown(name)
             }
         }
@@ -306,7 +342,7 @@ impl DistributionDetector {
     /// Remove quotes from values in key=value pairs
     fn unquote_value(value: &str) -> String {
         let value = value.trim();
-        
+
         if (value.starts_with('"') && value.ends_with('"'))
             || (value.starts_with('\'') && value.ends_with('\''))
         {
@@ -325,8 +361,14 @@ mod tests {
 
     #[test]
     fn test_unquote_value() {
-        assert_eq!(DistributionDetector::unquote_value("\"Ubuntu 20.04\""), "Ubuntu 20.04");
-        assert_eq!(DistributionDetector::unquote_value("'Arch Linux'"), "Arch Linux");
+        assert_eq!(
+            DistributionDetector::unquote_value("\"Ubuntu 20.04\""),
+            "Ubuntu 20.04"
+        );
+        assert_eq!(
+            DistributionDetector::unquote_value("'Arch Linux'"),
+            "Arch Linux"
+        );
         assert_eq!(DistributionDetector::unquote_value("Fedora"), "Fedora");
         assert_eq!(DistributionDetector::unquote_value(""), "");
     }
@@ -334,22 +376,22 @@ mod tests {
     #[test]
     fn test_determine_distribution_type() {
         let mut fields = HashMap::new();
-        
+
         assert_eq!(
             DistributionDetector::determine_distribution_type("ubuntu", &fields),
             DistributionType::Ubuntu
         );
-        
+
         assert_eq!(
             DistributionDetector::determine_distribution_type("debian", &fields),
             DistributionType::Debian
         );
-        
+
         assert_eq!(
             DistributionDetector::determine_distribution_type("arch", &fields),
             DistributionType::Arch
         );
-        
+
         assert_eq!(
             DistributionDetector::determine_distribution_type("nixos", &fields),
             DistributionType::NixOS
@@ -361,7 +403,7 @@ mod tests {
             DistributionDetector::determine_distribution_type("pop", &fields),
             DistributionType::Ubuntu
         );
-        
+
         fields.insert("NAME".to_string(), "Pop!_OS".to_string());
         assert_eq!(
             DistributionDetector::determine_distribution_type("unknown", &HashMap::new()),
@@ -373,7 +415,7 @@ mod tests {
     fn test_parse_ubuntu_os_release() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let os_release_path = temp_dir.path().join("os-release");
-        
+
         let content = r#"
 NAME="Ubuntu"
 VERSION="20.04.3 LTS (Focal Fossa)"
@@ -385,18 +427,18 @@ HOME_URL="https://www.ubuntu.com/"
 SUPPORT_URL="https://help.ubuntu.com/"
 BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
 "#;
-        
+
         fs::write(&os_release_path, content)?;
-        
+
         let info = DistributionDetector::parse_os_release(&os_release_path)?;
-        
+
         assert_eq!(info.distribution_type, DistributionType::Ubuntu);
         assert_eq!(info.id, "ubuntu");
         assert_eq!(info.name, "Ubuntu");
         assert_eq!(info.version_id, Some("20.04".to_string()));
         assert_eq!(info.pretty_name, Some("Ubuntu 20.04.3 LTS".to_string()));
         assert_eq!(info.id_like, Some(vec!["debian".to_string()]));
-        
+
         Ok(())
     }
 
@@ -404,7 +446,7 @@ BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
     fn test_parse_arch_os_release() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let os_release_path = temp_dir.path().join("os-release");
-        
+
         let content = r#"
 NAME="Arch Linux"
 PRETTY_NAME="Arch Linux"
@@ -417,17 +459,17 @@ SUPPORT_URL="https://bbs.archlinux.org/"
 BUG_REPORT_URL="https://bugs.archlinux.org/"
 LOGO=archlinux-logo
 "#;
-        
+
         fs::write(&os_release_path, content)?;
-        
+
         let info = DistributionDetector::parse_os_release(&os_release_path)?;
-        
+
         assert_eq!(info.distribution_type, DistributionType::Arch);
         assert_eq!(info.id, "arch");
         assert_eq!(info.name, "Arch Linux");
         assert_eq!(info.pretty_name, Some("Arch Linux".to_string()));
         assert_eq!(info.id_like, None);
-        
+
         Ok(())
     }
 
@@ -435,7 +477,7 @@ LOGO=archlinux-logo
     fn test_parse_nixos_os_release() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let os_release_path = temp_dir.path().join("os-release");
-        
+
         let content = r#"
 BUG_REPORT_URL="https://github.com/NixOS/nixpkgs/issues"
 BUILD_ID="23.11.20231130.316cf8e"
@@ -450,17 +492,17 @@ VERSION="23.11 (Tapir)"
 VERSION_CODENAME=tapir
 VERSION_ID="23.11"
 "#;
-        
+
         fs::write(&os_release_path, content)?;
-        
+
         let info = DistributionDetector::parse_os_release(&os_release_path)?;
-        
+
         assert_eq!(info.distribution_type, DistributionType::NixOS);
         assert_eq!(info.id, "nixos");
         assert_eq!(info.name, "NixOS");
         assert_eq!(info.version_id, Some("23.11".to_string()));
         assert_eq!(info.pretty_name, Some("NixOS 23.11 (Tapir)".to_string()));
-        
+
         Ok(())
     }
 
@@ -468,7 +510,7 @@ VERSION_ID="23.11"
     fn test_parse_fedora_os_release() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let os_release_path = temp_dir.path().join("os-release");
-        
+
         let content = r#"
 NAME="Fedora Linux"
 VERSION="39 (Workstation Edition)"
@@ -490,16 +532,16 @@ REDHAT_BUGZILLA_PRODUCT_VERSION=39
 REDHAT_SUPPORT_PRODUCT="Fedora"
 REDHAT_SUPPORT_PRODUCT_VERSION=39
 "#;
-        
+
         fs::write(&os_release_path, content)?;
-        
+
         let info = DistributionDetector::parse_os_release(&os_release_path)?;
-        
+
         assert_eq!(info.distribution_type, DistributionType::Fedora);
         assert_eq!(info.id, "fedora");
         assert_eq!(info.name, "Fedora Linux");
         assert_eq!(info.version_id, Some("39".to_string()));
-        
+
         Ok(())
     }
 
@@ -507,23 +549,23 @@ REDHAT_SUPPORT_PRODUCT_VERSION=39
     fn test_parse_lsb_release() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let lsb_release_path = temp_dir.path().join("lsb-release");
-        
+
         let content = r#"
 DISTRIB_ID=Ubuntu
 DISTRIB_RELEASE=20.04
 DISTRIB_CODENAME=focal
 DISTRIB_DESCRIPTION="Ubuntu 20.04.3 LTS"
 "#;
-        
+
         fs::write(&lsb_release_path, content)?;
-        
+
         let info = DistributionDetector::parse_lsb_release(&lsb_release_path)?;
-        
+
         assert_eq!(info.distribution_type, DistributionType::Ubuntu);
         assert_eq!(info.id, "ubuntu");
         assert_eq!(info.name, "Ubuntu 20.04.3 LTS");
         assert_eq!(info.version_id, Some("20.04".to_string()));
-        
+
         Ok(())
     }
 
@@ -541,11 +583,11 @@ DISTRIB_DESCRIPTION="Ubuntu 20.04.3 LTS"
             support_url: None,
             bug_report_url: None,
         };
-        
+
         assert!(ubuntu_info.is_based_on(&DistributionType::Ubuntu));
         assert!(ubuntu_info.is_based_on(&DistributionType::Debian));
         assert!(!ubuntu_info.is_based_on(&DistributionType::Arch));
-        
+
         let arch_info = DistributionInfo {
             distribution_type: DistributionType::Arch,
             version: None,
@@ -558,7 +600,7 @@ DISTRIB_DESCRIPTION="Ubuntu 20.04.3 LTS"
             support_url: None,
             bug_report_url: None,
         };
-        
+
         assert!(arch_info.is_based_on(&DistributionType::Arch));
         assert!(!arch_info.is_based_on(&DistributionType::Debian));
     }
@@ -568,6 +610,9 @@ DISTRIB_DESCRIPTION="Ubuntu 20.04.3 LTS"
         assert_eq!(DistributionType::Ubuntu.to_string(), "Ubuntu");
         assert_eq!(DistributionType::Arch.to_string(), "Arch Linux");
         assert_eq!(DistributionType::NixOS.to_string(), "NixOS");
-        assert_eq!(DistributionType::Unknown("Custom".to_string()).to_string(), "Unknown (Custom)");
+        assert_eq!(
+            DistributionType::Unknown("Custom".to_string()).to_string(),
+            "Unknown (Custom)"
+        );
     }
 }

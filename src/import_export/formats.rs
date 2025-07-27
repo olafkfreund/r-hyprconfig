@@ -43,7 +43,7 @@ impl ConfigFormat {
         match self {
             ConfigFormat::HyprlandConf => "Hyprland Configuration",
             ConfigFormat::Json => "JSON Format",
-            ConfigFormat::Toml => "TOML Format", 
+            ConfigFormat::Toml => "TOML Format",
             ConfigFormat::NixHomeManager => "NixOS Home Manager",
             ConfigFormat::NixSystem => "NixOS System Configuration",
             ConfigFormat::Yaml => "YAML Format",
@@ -427,27 +427,54 @@ mod tests {
 
     #[test]
     fn test_config_format_from_extension() {
-        assert_eq!(ConfigFormat::from_extension("conf"), Some(ConfigFormat::HyprlandConf));
-        assert_eq!(ConfigFormat::from_extension("json"), Some(ConfigFormat::Json));
-        assert_eq!(ConfigFormat::from_extension("TOML"), Some(ConfigFormat::Toml));
-        assert_eq!(ConfigFormat::from_extension("nix"), Some(ConfigFormat::NixHomeManager));
-        assert_eq!(ConfigFormat::from_extension("yaml"), Some(ConfigFormat::Yaml));
-        assert_eq!(ConfigFormat::from_extension("yml"), Some(ConfigFormat::Yaml));
-        assert_eq!(ConfigFormat::from_extension("rhypr"), Some(ConfigFormat::RHyprConfig));
+        assert_eq!(
+            ConfigFormat::from_extension("conf"),
+            Some(ConfigFormat::HyprlandConf)
+        );
+        assert_eq!(
+            ConfigFormat::from_extension("json"),
+            Some(ConfigFormat::Json)
+        );
+        assert_eq!(
+            ConfigFormat::from_extension("TOML"),
+            Some(ConfigFormat::Toml)
+        );
+        assert_eq!(
+            ConfigFormat::from_extension("nix"),
+            Some(ConfigFormat::NixHomeManager)
+        );
+        assert_eq!(
+            ConfigFormat::from_extension("yaml"),
+            Some(ConfigFormat::Yaml)
+        );
+        assert_eq!(
+            ConfigFormat::from_extension("yml"),
+            Some(ConfigFormat::Yaml)
+        );
+        assert_eq!(
+            ConfigFormat::from_extension("rhypr"),
+            Some(ConfigFormat::RHyprConfig)
+        );
         assert_eq!(ConfigFormat::from_extension("unknown"), None);
     }
 
     #[test]
     fn test_config_format_from_path() {
         let path = PathBuf::from("config.conf");
-        assert_eq!(ConfigFormat::from_path(&path), Some(ConfigFormat::HyprlandConf));
-        
+        assert_eq!(
+            ConfigFormat::from_path(&path),
+            Some(ConfigFormat::HyprlandConf)
+        );
+
         let path = PathBuf::from("/home/user/.config/hypr/hyprland.conf");
-        assert_eq!(ConfigFormat::from_path(&path), Some(ConfigFormat::HyprlandConf));
-        
+        assert_eq!(
+            ConfigFormat::from_path(&path),
+            Some(ConfigFormat::HyprlandConf)
+        );
+
         let path = PathBuf::from("config.json");
         assert_eq!(ConfigFormat::from_path(&path), Some(ConfigFormat::Json));
-        
+
         let path = PathBuf::from("no_extension");
         assert_eq!(ConfigFormat::from_path(&path), None);
     }
@@ -467,7 +494,7 @@ mod tests {
         config.add_tag("gaming");
         config.add_tag("minimal");
         config.add_tag("gaming"); // Duplicate should be ignored
-        
+
         assert_eq!(config.metadata.tags.len(), 2);
         assert!(config.metadata.tags.contains(&"gaming".to_string()));
         assert!(config.metadata.tags.contains(&"minimal".to_string()));
@@ -476,17 +503,17 @@ mod tests {
     #[test]
     fn test_structured_config_validation() -> Result<()> {
         let mut config = StructuredConfig::new("Valid Config");
-        
+
         // Valid config should pass
         config.validate()?;
-        
+
         // Empty name should fail
         config.metadata.name = "".to_string();
         assert!(config.validate().is_err());
-        
+
         // Fix name
         config.metadata.name = "Valid Config".to_string();
-        
+
         // Invalid keybind should fail
         config.keybinds.push(KeybindEntry {
             bind_type: "bind".to_string(),
@@ -497,14 +524,14 @@ mod tests {
             description: None,
         });
         assert!(config.validate().is_err());
-        
+
         Ok(())
     }
 
     #[test]
     fn test_structured_config_summary() {
         let mut config = StructuredConfig::new("Test Config");
-        
+
         config.keybinds.push(KeybindEntry {
             bind_type: "bind".to_string(),
             modifiers: vec!["SUPER".to_string()],
@@ -513,13 +540,13 @@ mod tests {
             args: Some("kitty".to_string()),
             description: None,
         });
-        
+
         config.window_rules.push(WindowRuleEntry {
             rule: "float".to_string(),
             window_identifier: "^(kitty)$".to_string(),
             description: None,
         });
-        
+
         let summary = config.summary();
         assert!(summary.contains("Test Config"));
         assert!(summary.contains("1 keybinds"));
@@ -543,13 +570,22 @@ mod tests {
         assert_eq!(ConfigFormat::Toml.mime_type(), "application/toml");
         assert_eq!(ConfigFormat::NixHomeManager.mime_type(), "text/x-nix");
         assert_eq!(ConfigFormat::Yaml.mime_type(), "application/yaml");
-        assert_eq!(ConfigFormat::RHyprConfig.mime_type(), "application/x-rhyprconfig");
+        assert_eq!(
+            ConfigFormat::RHyprConfig.mime_type(),
+            "application/x-rhyprconfig"
+        );
     }
 
     #[test]
     fn test_config_format_description() {
-        assert_eq!(ConfigFormat::HyprlandConf.description(), "Hyprland Configuration");
+        assert_eq!(
+            ConfigFormat::HyprlandConf.description(),
+            "Hyprland Configuration"
+        );
         assert_eq!(ConfigFormat::Json.description(), "JSON Format");
-        assert_eq!(ConfigFormat::NixHomeManager.description(), "NixOS Home Manager");
+        assert_eq!(
+            ConfigFormat::NixHomeManager.description(),
+            "NixOS Home Manager"
+        );
     }
 }
