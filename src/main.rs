@@ -1,4 +1,3 @@
-// Suppress warnings for comprehensive backend that will be used in future TUI enhancements
 #![allow(dead_code)]
 #![allow(unused_imports)]
 #![allow(clippy::uninlined_format_args)]

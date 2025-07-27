@@ -160,7 +160,7 @@ impl ConfigExporter {
         // Convert keybinds
         for bind in &config.binds {
             // Parse the bind string to extract components
-            // This is a simplified parser - in reality you'd want more robust parsing
+            // TODO: Improve bind parsing
             let parts: Vec<&str> = bind.split("->").collect();
             if parts.len() == 2 {
                 let key_part = parts[0].trim();

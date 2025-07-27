@@ -476,7 +476,7 @@ impl ConfigImporter {
 
         let mut config = StructuredConfig::new(&name);
         
-        // Basic parsing - this would need to be much more sophisticated
+        // TODO: Improve config parsing
         for line in content.lines() {
             let line = line.trim();
             if line.is_empty() || line.starts_with('#') {
@@ -578,7 +578,7 @@ impl ConfigImporter {
     }
 
     fn parse_keybind_line(&self, line: &str) -> Option<super::formats::KeybindEntry> {
-        // Basic keybind parsing - would need to be more robust
+        // TODO: Improve keybind parsing
         if let Some(equals_pos) = line.find('=') {
             let bind_type = line[..equals_pos].trim();
             let bind_part = line[equals_pos + 1..].trim();

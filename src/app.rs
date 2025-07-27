@@ -128,17 +128,13 @@ impl App {
             Err(e) => {
                 eprintln!("Warning: Failed to initialize hyprctl: {e}");
                 eprintln!("Will try to load configuration from config file instead.");
-                // Create a dummy HyprCtl that will fail gracefully
                 HyprCtl::new_disconnected()
             }
         };
 
         let mut ui = UI::new();
 
-        // Set theme from config
         ui.set_theme(config.theme.clone());
-
-        // Load current configuration from hyprctl or config file
         if let Err(e) = ui.load_current_config(&hyprctl).await {
             eprintln!("Warning: Failed to load current configuration: {e}");
             eprintln!("Using default placeholder values.");
@@ -649,7 +645,6 @@ impl App {
                         };
                     }
                     KeyCode::Char(c) => {
-                        // Add character to the currently editing field
                         match editing_field {
                             crate::ui::KeybindField::Key => {
                                 *key_field = c.to_string();
@@ -677,7 +672,6 @@ impl App {
                         }
                     }
                     KeyCode::Backspace => {
-                        // Remove characters from the currently editing field
                         match editing_field {
                             crate::ui::KeybindField::Key => {
                                 key_field.clear();
@@ -725,7 +719,6 @@ impl App {
                         };
                     }
                     KeyCode::Char(c) => {
-                        // Add character to the currently editing field
                         match editing_field {
                             crate::ui::RuleField::Pattern => {
                                 pattern.push(c);
@@ -736,7 +729,6 @@ impl App {
                         }
                     }
                     KeyCode::Backspace => {
-                        // Remove characters from the currently editing field
                         match editing_field {
                             crate::ui::RuleField::Pattern => {
                                 pattern.pop();
@@ -867,7 +859,6 @@ impl App {
     }
 
     async fn save_config(&mut self) -> Result<()> {
-        // Save the application's own config
         self.config.save().await?;
 
         // Collect all configuration changes from the UI
@@ -2055,7 +2046,6 @@ impl App {
     }
 
     async fn execute_import(&mut self) {
-        // Placeholder implementation - integrate with the existing import system
         match self.import_config_from_file().await {
             Ok(imported_count) => {
                 self.ui.show_popup = true;
@@ -2070,7 +2060,6 @@ impl App {
     }
 
     async fn execute_export(&mut self) {
-        // Placeholder implementation - integrate with the existing export system  
         match self.export_config_to_file().await {
             Ok(path) => {
                 self.ui.show_popup = true;

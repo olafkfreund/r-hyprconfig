@@ -79,7 +79,7 @@ impl NixConfigGenerator {
         self.generate_config(config, options)
     }
 
-    /// Generate configuration with advanced template support
+    /// Generate configuration from template
     fn generate_config(
         &self,
         config: &HyprlandConfig,
@@ -121,7 +121,7 @@ impl NixConfigGenerator {
         })
     }
 
-    /// Generate enhanced Home Manager configuration
+    /// Generate Home Manager configuration
     fn generate_enhanced_home_manager(
         &self,
         settings: &HashMap<String, String>,
@@ -210,7 +210,7 @@ impl NixConfigGenerator {
         Ok(nix_config)
     }
 
-    /// Generate enhanced system configuration
+    /// Generate system configuration
     fn generate_enhanced_system_config(
         &self,
         _settings: &HashMap<String, String>,

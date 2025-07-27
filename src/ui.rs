@@ -335,7 +335,6 @@ impl UI {
         ui.import_list_state.select(Some(0));
         ui.export_list_state.select(Some(0));
 
-        // Initialize config items with enhanced data
         ui.initialize_config_items();
 
         ui
@@ -2090,7 +2089,6 @@ impl UI {
             .margin(1)
             .split(size);
 
-        // Render enhanced header
         self.render_enhanced_header(f, main_chunks[0], debug);
 
         // Render tab bar
@@ -2099,7 +2097,6 @@ impl UI {
         // Render current tab content
         self.render_current_tab(f, main_chunks[2]);
 
-        // Render enhanced footer
         self.render_enhanced_footer(f, main_chunks[3]);
 
         // Render popups and dialogs on top
@@ -2342,7 +2339,6 @@ impl UI {
         let theme = self.theme.clone();
         let current_tab = self.current_tab;
 
-        // Create optimized list items (only for visible items)
         let items = Self::create_optimized_list_items(&virtualized_items, &theme);
 
         // Panel title
@@ -2414,10 +2410,8 @@ impl UI {
             )
         };
 
-        // Get enhanced config items
         let config_items = self.config_items.get(&panel).cloned().unwrap_or_default();
 
-        // Create enhanced list items with better formatting
         let items: Vec<ListItem> = config_items
             .iter()
             .map(|item| {
@@ -4087,10 +4081,8 @@ impl UI {
         let mut list_items = Vec::with_capacity(items.len());
 
         for item in items {
-            // Create optimized ListItem with minimal string allocations
             let value_style = theme.data_type_style(&item.data_type);
 
-            // Optimize string handling to minimize allocations
             let key_display = if item.key.len() > 25 {
                 format!("{}...", &item.key[..22])
             } else {

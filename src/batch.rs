@@ -436,8 +436,7 @@ impl ConfigBatchExt for Config {
     }
 
     fn load_from_file(_path: &Path) -> Result<Config> {
-        // Load config from file - this is a placeholder implementation
-        // In a real implementation, you'd parse the hyprland.conf file
+        // TODO: Parse hyprland.conf file
         Ok(Config::default())
     }
 
