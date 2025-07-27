@@ -540,6 +540,11 @@ impl App {
                     }
                     KeyCode::Char(' ') => {
                         *current_value = !*current_value;
+                        
+                        if preview_enabled {
+                            should_trigger_preview = true;
+                            preview_value = current_value.to_string();
+                        }
                     }
                     _ => {}
                 }
@@ -566,12 +571,22 @@ impl App {
                         } else {
                             *selected = options.len() - 1;
                         }
+                        
+                        if preview_enabled {
+                            should_trigger_preview = true;
+                            preview_value = options[*selected].clone();
+                        }
                     }
                     KeyCode::Down => {
                         if *selected < options.len() - 1 {
                             *selected += 1;
                         } else {
                             *selected = 0;
+                        }
+                        
+                        if preview_enabled {
+                            should_trigger_preview = true;
+                            preview_value = options[*selected].clone();
                         }
                     }
                     _ => {}
@@ -600,15 +615,51 @@ impl App {
                     }
                     KeyCode::Left => {
                         *current_value = (*current_value - *step).max(*min);
+                        
+                        if preview_enabled {
+                            should_trigger_preview = true;
+                            preview_value = if current_value.fract() == 0.0 {
+                                (*current_value as i32).to_string()
+                            } else {
+                                format!("{current_value:.2}")
+                            };
+                        }
                     }
                     KeyCode::Right => {
                         *current_value = (*current_value + *step).min(*max);
+                        
+                        if preview_enabled {
+                            should_trigger_preview = true;
+                            preview_value = if current_value.fract() == 0.0 {
+                                (*current_value as i32).to_string()
+                            } else {
+                                format!("{current_value:.2}")
+                            };
+                        }
                     }
                     KeyCode::Home => {
                         *current_value = *min;
+                        
+                        if preview_enabled {
+                            should_trigger_preview = true;
+                            preview_value = if current_value.fract() == 0.0 {
+                                (*current_value as i32).to_string()
+                            } else {
+                                format!("{current_value:.2}")
+                            };
+                        }
                     }
                     KeyCode::End => {
                         *current_value = *max;
+                        
+                        if preview_enabled {
+                            should_trigger_preview = true;
+                            preview_value = if current_value.fract() == 0.0 {
+                                (*current_value as i32).to_string()
+                            } else {
+                                format!("{current_value:.2}")
+                            };
+                        }
                     }
                     _ => {}
                 }
