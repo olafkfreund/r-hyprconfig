@@ -3636,7 +3636,7 @@ impl UI {
         Ok(())
     }
 
-    fn get_hyprctl_key(&self, panel: &FocusedPanel, key: &str) -> Option<String> {
+    pub fn get_hyprctl_key(&self, panel: &FocusedPanel, key: &str) -> Option<String> {
         match panel {
             FocusedPanel::General => match key {
                 "gaps_in" => Some("general:gaps_in".to_string()),
