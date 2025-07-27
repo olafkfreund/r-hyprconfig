@@ -476,7 +476,7 @@
 <a href=#476 id=476 data-nosnippet>476</a>
 <a href=#477 id=477 data-nosnippet>477</a>        <span class="kw">let </span><span class="kw-2">mut </span>config = StructuredConfig::new(<span class="kw-2">&amp;</span>name);
 <a href=#478 id=478 data-nosnippet>478</a>        
-<a href=#479 id=479 data-nosnippet>479</a>        <span class="comment">// Basic parsing - this would need to be much more sophisticated
+<a href=#479 id=479 data-nosnippet>479</a>        <span class="comment">// TODO: Improve config parsing
 <a href=#480 id=480 data-nosnippet>480</a>        </span><span class="kw">for </span>line <span class="kw">in </span>content.lines() {
 <a href=#481 id=481 data-nosnippet>481</a>            <span class="kw">let </span>line = line.trim();
 <a href=#482 id=482 data-nosnippet>482</a>            <span class="kw">if </span>line.is_empty() || line.starts_with(<span class="string">'#'</span>) {
@@ -578,7 +578,7 @@
 <a href=#578 id=578 data-nosnippet>578</a>    }
 <a href=#579 id=579 data-nosnippet>579</a>
 <a href=#580 id=580 data-nosnippet>580</a>    <span class="kw">fn </span>parse_keybind_line(<span class="kw-2">&amp;</span><span class="self">self</span>, line: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Option</span>&lt;<span class="kw">super</span>::formats::KeybindEntry&gt; {
-<a href=#581 id=581 data-nosnippet>581</a>        <span class="comment">// Basic keybind parsing - would need to be more robust
+<a href=#581 id=581 data-nosnippet>581</a>        <span class="comment">// TODO: Improve keybind parsing
 <a href=#582 id=582 data-nosnippet>582</a>        </span><span class="kw">if let </span><span class="prelude-val">Some</span>(equals_pos) = line.find(<span class="string">'='</span>) {
 <a href=#583 id=583 data-nosnippet>583</a>            <span class="kw">let </span>bind_type = line[..equals_pos].trim();
 <a href=#584 id=584 data-nosnippet>584</a>            <span class="kw">let </span>bind_part = line[equals_pos + <span class="number">1</span>..].trim();

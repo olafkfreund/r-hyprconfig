@@ -160,7 +160,7 @@
 <a href=#160 id=160 data-nosnippet>160</a>        <span class="comment">// Convert keybinds
 <a href=#161 id=161 data-nosnippet>161</a>        </span><span class="kw">for </span>bind <span class="kw">in </span><span class="kw-2">&amp;</span>config.binds {
 <a href=#162 id=162 data-nosnippet>162</a>            <span class="comment">// Parse the bind string to extract components
-<a href=#163 id=163 data-nosnippet>163</a>            // This is a simplified parser - in reality you'd want more robust parsing
+<a href=#163 id=163 data-nosnippet>163</a>            // TODO: Improve bind parsing
 <a href=#164 id=164 data-nosnippet>164</a>            </span><span class="kw">let </span>parts: Vec&lt;<span class="kw-2">&amp;</span>str&gt; = bind.split(<span class="string">"-&gt;"</span>).collect();
 <a href=#165 id=165 data-nosnippet>165</a>            <span class="kw">if </span>parts.len() == <span class="number">2 </span>{
 <a href=#166 id=166 data-nosnippet>166</a>                <span class="kw">let </span>key_part = parts[<span class="number">0</span>].trim();
