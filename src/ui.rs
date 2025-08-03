@@ -2572,10 +2572,16 @@ impl UI {
             Span::styled("L", Style::default().fg(self.theme.accent_secondary).bold()),
             Span::styled(" Live Preview ", Style::default().fg(self.theme.fg_muted)),
             Span::raw("• "),
-            Span::styled("Ctrl+Z", Style::default().fg(self.theme.accent_secondary).bold()),
+            Span::styled(
+                "Ctrl+Z",
+                Style::default().fg(self.theme.accent_secondary).bold(),
+            ),
             Span::styled(" Undo ", Style::default().fg(self.theme.fg_muted)),
             Span::raw("• "),
-            Span::styled("Ctrl+Y", Style::default().fg(self.theme.accent_secondary).bold()),
+            Span::styled(
+                "Ctrl+Y",
+                Style::default().fg(self.theme.accent_secondary).bold(),
+            ),
             Span::styled(" Redo ", Style::default().fg(self.theme.fg_muted)),
             Span::raw("• "),
             Span::styled("Q/Esc", self.theme.error_style().bold()),

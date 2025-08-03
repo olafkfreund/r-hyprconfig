@@ -13,7 +13,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{batch::BatchManager, config::Config, hyprctl::HyprCtl, ui::UI, undo::{UndoManager, ConfigSnapshot}};
+use crate::{
+    batch::BatchManager,
+    config::Config,
+    hyprctl::HyprCtl,
+    ui::UI,
+    undo::{ConfigSnapshot, UndoManager},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppState {
@@ -193,14 +199,21 @@ impl App {
                 if let Event::Key(key) = event::read()? {
                     if key.kind == KeyEventKind::Press {
                         // Check for Ctrl+Z (undo)
-                        if key.code == KeyCode::Char('z') && key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
+                        if key.code == KeyCode::Char('z')
+                            && key
+                                .modifiers
+                                .contains(crossterm::event::KeyModifiers::CONTROL)
+                        {
                             self.handle_undo().await?;
                         }
                         // Check for Ctrl+Y (redo)
-                        else if key.code == KeyCode::Char('y') && key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
+                        else if key.code == KeyCode::Char('y')
+                            && key
+                                .modifiers
+                                .contains(crossterm::event::KeyModifiers::CONTROL)
+                        {
                             self.handle_redo().await?;
-                        }
-                        else {
+                        } else {
                             self.handle_key_event(key.code).await?;
                         }
                     }
@@ -1698,7 +1711,7 @@ impl App {
 
     async fn validate_keybind(&self, keybind: &str) -> Result<()> {
         let trimmed = keybind.trim();
-        
+
         // Skip empty lines or comments
         if trimmed.is_empty() || trimmed.starts_with('#') {
             return Ok(());
@@ -1707,10 +1720,13 @@ impl App {
         // Check if it's a bind-related directive
         let bind_prefixes = ["bind", "binde", "bindm", "bindr", "bindl"];
         let is_bind = bind_prefixes.iter().any(|prefix| {
-            trimmed.starts_with(prefix) && (
-                trimmed.len() == prefix.len() ||
-                trimmed.chars().nth(prefix.len()).map(|c| c == '=' || c.is_whitespace()).unwrap_or(false)
-            )
+            trimmed.starts_with(prefix)
+                && (trimmed.len() == prefix.len()
+                    || trimmed
+                        .chars()
+                        .nth(prefix.len())
+                        .map(|c| c == '=' || c.is_whitespace())
+                        .unwrap_or(false))
         });
 
         if !is_bind {
@@ -1722,10 +1738,10 @@ impl App {
         // Find the = separator
         if let Some(eq_pos) = trimmed.find('=') {
             let after_eq = &trimmed[eq_pos + 1..].trim();
-            
+
             // Split by comma to get components
             let parts: Vec<&str> = after_eq.split(',').map(|s| s.trim()).collect();
-            
+
             // More flexible validation - just check we have at least modifiers and key
             if parts.len() < 2 {
                 return Err(anyhow::anyhow!(
@@ -1746,9 +1762,7 @@ impl App {
                 }
             }
         } else {
-            return Err(anyhow::anyhow!(
-                "must contain '=' separator"
-            ));
+            return Err(anyhow::anyhow!("must contain '=' separator"));
         }
 
         Ok(())
@@ -1756,7 +1770,7 @@ impl App {
 
     async fn validate_window_rule(&self, rule: &str) -> Result<()> {
         let trimmed = rule.trim();
-        
+
         // Skip empty lines or comments
         if trimmed.is_empty() || trimmed.starts_with('#') {
             return Ok(());
@@ -1765,14 +1779,19 @@ impl App {
         // Check if it's a window rule directive (windowrule or windowrulev2)
         let rule_prefixes = ["windowrule", "windowrulev2"];
         let is_window_rule = rule_prefixes.iter().any(|prefix| {
-            trimmed.starts_with(prefix) && (
-                trimmed.len() == prefix.len() ||
-                trimmed.chars().nth(prefix.len()).map(|c| c == '=' || c.is_whitespace()).unwrap_or(false)
-            )
+            trimmed.starts_with(prefix)
+                && (trimmed.len() == prefix.len()
+                    || trimmed
+                        .chars()
+                        .nth(prefix.len())
+                        .map(|c| c == '=' || c.is_whitespace())
+                        .unwrap_or(false))
         });
 
         if !is_window_rule {
-            return Err(anyhow::anyhow!("must start with 'windowrule' or 'windowrulev2'"));
+            return Err(anyhow::anyhow!(
+                "must start with 'windowrule' or 'windowrulev2'"
+            ));
         }
 
         // More flexible validation - just check for = separator
@@ -1785,15 +1804,21 @@ impl App {
 
     async fn validate_layer_rule(&self, rule: &str) -> Result<()> {
         let trimmed = rule.trim();
-        
+
         // Skip empty lines or comments
         if trimmed.is_empty() || trimmed.starts_with('#') {
             return Ok(());
         }
 
         // Check if it's a layer rule directive
-        if !trimmed.starts_with("layerrule") || 
-           (!trimmed.chars().nth(9).map(|c| c == '=' || c.is_whitespace()).unwrap_or(false) && trimmed.len() > 9) {
+        if !trimmed.starts_with("layerrule")
+            || (!trimmed
+                .chars()
+                .nth(9)
+                .map(|c| c == '=' || c.is_whitespace())
+                .unwrap_or(false)
+                && trimmed.len() > 9)
+        {
             return Err(anyhow::anyhow!("must start with 'layerrule'"));
         }
 
@@ -1810,12 +1835,12 @@ impl App {
         if let Some(snapshot) = self.undo_manager.undo() {
             // Restore the configuration state from the snapshot
             self.ui.config_items = snapshot.config_items;
-            
+
             // Show feedback to user
             let description = snapshot.description.unwrap_or_else(|| "Change".to_string());
             self.ui.show_popup = true;
             self.ui.popup_message = format!("Undone: {}", description);
-            
+
             // Apply the restored configuration if live preview is enabled
             if self.ui.is_preview_mode() {
                 self.apply_current_configuration().await?;
@@ -1832,12 +1857,12 @@ impl App {
         if let Some(snapshot) = self.undo_manager.redo() {
             // Restore the configuration state from the snapshot
             self.ui.config_items = snapshot.config_items;
-            
-            // Show feedback to user  
+
+            // Show feedback to user
             let description = snapshot.description.unwrap_or_else(|| "Change".to_string());
             self.ui.show_popup = true;
             self.ui.popup_message = format!("Redone: {}", description);
-            
+
             // Apply the restored configuration if live preview is enabled
             if self.ui.is_preview_mode() {
                 self.apply_current_configuration().await?;
@@ -1859,14 +1884,14 @@ impl App {
     /// Apply current configuration state to Hyprland (for live preview)
     async fn apply_current_configuration(&mut self) -> Result<()> {
         let config_changes = self.ui.collect_all_config_changes();
-        
+
         // Apply each configuration change
         for (key, value) in config_changes {
             if let Err(e) = self.hyprctl.set_option(&key, &value).await {
                 eprintln!("Failed to apply config change {key}={value}: {e}");
             }
         }
-        
+
         Ok(())
     }
 

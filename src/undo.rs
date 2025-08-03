@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-use serde::{Deserialize, Serialize};
-use crate::ui::ConfigItem;
 use crate::app::FocusedPanel;
+use crate::ui::ConfigItem;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Represents a snapshot of the entire configuration state
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -15,7 +15,10 @@ pub struct ConfigSnapshot {
 }
 
 impl ConfigSnapshot {
-    pub fn new(config_items: HashMap<FocusedPanel, Vec<ConfigItem>>, description: Option<String>) -> Self {
+    pub fn new(
+        config_items: HashMap<FocusedPanel, Vec<ConfigItem>>,
+        description: Option<String>,
+    ) -> Self {
         Self {
             config_items,
             timestamp: chrono::Utc::now(),
@@ -63,7 +66,7 @@ impl UndoManager {
         // If we have a current snapshot, move it to undo stack
         if let Some(current) = self.current_snapshot.take() {
             self.undo_stack.push(current);
-            
+
             // Limit undo stack size
             if self.undo_stack.len() > self.max_history {
                 self.undo_stack.remove(0);
@@ -72,7 +75,7 @@ impl UndoManager {
 
         // Clear redo stack when new changes are made
         self.redo_stack.clear();
-        
+
         // Set new current snapshot
         self.current_snapshot = Some(snapshot);
     }
@@ -82,7 +85,7 @@ impl UndoManager {
         if let Some(current) = self.current_snapshot.take() {
             // Move current to redo stack
             self.redo_stack.push(current);
-            
+
             // Pop from undo stack to become current
             if let Some(previous) = self.undo_stack.pop() {
                 let snapshot = previous.clone();
@@ -137,12 +140,16 @@ impl UndoManager {
 
     /// Get description of the last undo operation
     pub fn undo_description(&self) -> Option<&str> {
-        self.undo_stack.last().and_then(|s| s.description.as_deref())
+        self.undo_stack
+            .last()
+            .and_then(|s| s.description.as_deref())
     }
 
     /// Get description of the last redo operation
     pub fn redo_description(&self) -> Option<&str> {
-        self.redo_stack.last().and_then(|s| s.description.as_deref())
+        self.redo_stack
+            .last()
+            .and_then(|s| s.description.as_deref())
     }
 
     /// Clear all undo/redo history
@@ -211,7 +218,7 @@ mod tests {
     #[test]
     fn test_undo_redo_cycle() {
         let mut manager = UndoManager::new(10);
-        
+
         // Create first snapshot
         let config1 = create_test_config_items();
         let snapshot1 = ConfigSnapshot::new(config1, Some("First state".to_string()));
