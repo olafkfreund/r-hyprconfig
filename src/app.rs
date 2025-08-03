@@ -1681,63 +1681,109 @@ impl App {
     }
 
     async fn validate_keybind(&self, keybind: &str) -> Result<()> {
-        // Basic keybind format validation
-        if !keybind.starts_with("bind") {
+        let trimmed = keybind.trim();
+        
+        // Skip empty lines or comments
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            return Ok(());
+        }
+
+        // Check if it's a bind-related directive
+        let bind_prefixes = ["bind", "binde", "bindm", "bindr", "bindl"];
+        let is_bind = bind_prefixes.iter().any(|prefix| {
+            trimmed.starts_with(prefix) && (
+                trimmed.len() == prefix.len() ||
+                trimmed.chars().nth(prefix.len()).map(|c| c == '=' || c.is_whitespace()).unwrap_or(false)
+            )
+        });
+
+        if !is_bind {
             return Err(anyhow::anyhow!(
-                "must start with 'bind', 'binde', 'bindm', etc."
+                "must start with a bind directive (bind, binde, bindm, bindr, bindl)"
             ));
         }
 
-        // Check for required components (modifiers, key, dispatcher)
-        let parts: Vec<&str> = keybind.split(',').collect();
-        if parts.len() < 4 {
+        // Find the = separator
+        if let Some(eq_pos) = trimmed.find('=') {
+            let after_eq = &trimmed[eq_pos + 1..].trim();
+            
+            // Split by comma to get components
+            let parts: Vec<&str> = after_eq.split(',').map(|s| s.trim()).collect();
+            
+            // More flexible validation - just check we have at least modifiers and key
+            if parts.len() < 2 {
+                return Err(anyhow::anyhow!(
+                    "must have at least: MODIFIERS, KEY after '='"
+                ));
+            }
+
+            // Check that key (second part) isn't empty
+            if parts.get(1).unwrap_or(&"").trim().is_empty() {
+                return Err(anyhow::anyhow!("key cannot be empty"));
+            }
+
+            // If there's a dispatcher (third part), check it's not empty
+            if parts.len() >= 3 {
+                let dispatcher = parts.get(2).unwrap_or(&"").trim();
+                if dispatcher.is_empty() {
+                    return Err(anyhow::anyhow!("dispatcher cannot be empty"));
+                }
+            }
+        } else {
             return Err(anyhow::anyhow!(
-                "must have format: bind = MODIFIERS, KEY, DISPATCHER, ARGS"
+                "must contain '=' separator"
             ));
-        }
-
-        // Validate that key isn't empty
-        let key = parts.get(2).unwrap_or(&"").trim();
-        if key.is_empty() {
-            return Err(anyhow::anyhow!("key cannot be empty"));
-        }
-
-        // Validate that dispatcher isn't empty
-        let dispatcher = parts.get(3).unwrap_or(&"").trim();
-        if dispatcher.is_empty() {
-            return Err(anyhow::anyhow!("dispatcher cannot be empty"));
         }
 
         Ok(())
     }
 
     async fn validate_window_rule(&self, rule: &str) -> Result<()> {
-        // Basic window rule format validation
-        if !rule.starts_with("windowrule") {
-            return Err(anyhow::anyhow!("must start with 'windowrule'"));
+        let trimmed = rule.trim();
+        
+        // Skip empty lines or comments
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            return Ok(());
         }
 
-        // Check for basic format
-        if !rule.contains('=') || !rule.contains(',') {
-            return Err(anyhow::anyhow!(
-                "must have format: windowrule = RULE, WINDOW_PATTERN"
-            ));
+        // Check if it's a window rule directive (windowrule or windowrulev2)
+        let rule_prefixes = ["windowrule", "windowrulev2"];
+        let is_window_rule = rule_prefixes.iter().any(|prefix| {
+            trimmed.starts_with(prefix) && (
+                trimmed.len() == prefix.len() ||
+                trimmed.chars().nth(prefix.len()).map(|c| c == '=' || c.is_whitespace()).unwrap_or(false)
+            )
+        });
+
+        if !is_window_rule {
+            return Err(anyhow::anyhow!("must start with 'windowrule' or 'windowrulev2'"));
+        }
+
+        // More flexible validation - just check for = separator
+        if !trimmed.contains('=') {
+            return Err(anyhow::anyhow!("must contain '=' separator"));
         }
 
         Ok(())
     }
 
     async fn validate_layer_rule(&self, rule: &str) -> Result<()> {
-        // Basic layer rule format validation
-        if !rule.starts_with("layerrule") {
+        let trimmed = rule.trim();
+        
+        // Skip empty lines or comments
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            return Ok(());
+        }
+
+        // Check if it's a layer rule directive
+        if !trimmed.starts_with("layerrule") || 
+           (!trimmed.chars().nth(9).map(|c| c == '=' || c.is_whitespace()).unwrap_or(false) && trimmed.len() > 9) {
             return Err(anyhow::anyhow!("must start with 'layerrule'"));
         }
 
-        // Check for basic format
-        if !rule.contains('=') || !rule.contains(',') {
-            return Err(anyhow::anyhow!(
-                "must have format: layerrule = RULE, LAYER_PATTERN"
-            ));
+        // More flexible validation - just check for = separator
+        if !trimmed.contains('=') {
+            return Err(anyhow::anyhow!("must contain '=' separator"));
         }
 
         Ok(())
