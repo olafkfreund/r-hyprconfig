@@ -1,6 +1,6 @@
 pkgbase = r-hyprconfig
 	pkgdesc = A modern TUI for visually configuring Hyprland
-	pkgver = 1.0.6
+	pkgver = 1.2.0
 	pkgrel = 1
 	url = https://github.com/olafkfreund/r-hyprconfig
 	arch = x86_64
@@ -10,7 +10,7 @@ pkgbase = r-hyprconfig
 	makedepends = cargo
 	depends = gcc-libs
 	depends = glibc
-	source = r-hyprconfig-1.0.6.tar.gz::https://github.com/olafkfreund/r-hyprconfig/archive/v1.0.6.tar.gz
+	source = r-hyprconfig-1.2.0.tar.gz::https://github.com/olafkfreund/r-hyprconfig/archive/v1.2.0.tar.gz
 	sha256sums = SKIP
 
 pkgname = r-hyprconfig

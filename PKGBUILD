@@ -1,6 +1,6 @@
 # Maintainer: olafkfreund <olafkfreund@gmail.com>
 pkgname=r-hyprconfig
-pkgver=1.0.6
+pkgver=1.2.0
 pkgrel=1
 pkgdesc="A modern TUI for visually configuring Hyprland"
 arch=('x86_64' 'aarch64')
