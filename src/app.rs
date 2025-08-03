@@ -13,7 +13,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{batch::BatchManager, config::Config, hyprctl::HyprCtl, ui::UI};
+use crate::{batch::BatchManager, config::Config, hyprctl::HyprCtl, ui::UI, undo::{UndoManager, ConfigSnapshot}};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppState {
@@ -21,7 +21,7 @@ pub enum AppState {
     Quitting,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum FocusedPanel {
     General,
     Input,
@@ -95,6 +95,7 @@ pub struct App {
     pub hyprctl: HyprCtl,
     pub ui: UI,
     pub batch_manager: BatchManager,
+    pub undo_manager: UndoManager,
     pub last_tick: Instant,
     pub tick_rate: Duration,
 }
@@ -154,6 +155,7 @@ impl App {
             hyprctl,
             ui,
             batch_manager,
+            undo_manager: UndoManager::default(),
             last_tick: Instant::now(),
             tick_rate: Duration::from_millis(50), // Faster tick rate for responsive preview
         })
@@ -190,7 +192,17 @@ impl App {
             if crossterm::event::poll(timeout)? {
                 if let Event::Key(key) = event::read()? {
                     if key.kind == KeyEventKind::Press {
-                        self.handle_key_event(key.code).await?;
+                        // Check for Ctrl+Z (undo)
+                        if key.code == KeyCode::Char('z') && key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
+                            self.handle_undo().await?;
+                        }
+                        // Check for Ctrl+Y (redo)
+                        else if key.code == KeyCode::Char('y') && key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
+                            self.handle_redo().await?;
+                        }
+                        else {
+                            self.handle_key_event(key.code).await?;
+                        }
                     }
                 }
             }
@@ -309,6 +321,10 @@ impl App {
                 self.ui.next_page();
             }
             KeyCode::Enter => {
+                // Take snapshot before starting to edit
+                if let Some(item) = self.ui.get_selected_item() {
+                    self.take_config_snapshot(&format!("Edit {}", item.key));
+                }
                 self.ui.start_editing().await?;
             }
             KeyCode::Char('r') | KeyCode::Char('R') => {
@@ -1786,6 +1802,71 @@ impl App {
             return Err(anyhow::anyhow!("must contain '=' separator"));
         }
 
+        Ok(())
+    }
+
+    // Undo/Redo handlers
+    async fn handle_undo(&mut self) -> Result<()> {
+        if let Some(snapshot) = self.undo_manager.undo() {
+            // Restore the configuration state from the snapshot
+            self.ui.config_items = snapshot.config_items;
+            
+            // Show feedback to user
+            let description = snapshot.description.unwrap_or_else(|| "Change".to_string());
+            self.ui.show_popup = true;
+            self.ui.popup_message = format!("Undone: {}", description);
+            
+            // Apply the restored configuration if live preview is enabled
+            if self.ui.is_preview_mode() {
+                self.apply_current_configuration().await?;
+            }
+        } else {
+            // No undo available
+            self.ui.show_popup = true;
+            self.ui.popup_message = "Nothing to undo".to_string();
+        }
+        Ok(())
+    }
+
+    async fn handle_redo(&mut self) -> Result<()> {
+        if let Some(snapshot) = self.undo_manager.redo() {
+            // Restore the configuration state from the snapshot
+            self.ui.config_items = snapshot.config_items;
+            
+            // Show feedback to user  
+            let description = snapshot.description.unwrap_or_else(|| "Change".to_string());
+            self.ui.show_popup = true;
+            self.ui.popup_message = format!("Redone: {}", description);
+            
+            // Apply the restored configuration if live preview is enabled
+            if self.ui.is_preview_mode() {
+                self.apply_current_configuration().await?;
+            }
+        } else {
+            // No redo available
+            self.ui.show_popup = true;
+            self.ui.popup_message = "Nothing to redo".to_string();
+        }
+        Ok(())
+    }
+
+    /// Take a snapshot before making changes
+    fn take_config_snapshot(&mut self, description: &str) {
+        let snapshot = ConfigSnapshot::from_ui(&self.ui, Some(description.to_string()));
+        self.undo_manager.take_snapshot(snapshot);
+    }
+
+    /// Apply current configuration state to Hyprland (for live preview)
+    async fn apply_current_configuration(&mut self) -> Result<()> {
+        let config_changes = self.ui.collect_all_config_changes();
+        
+        // Apply each configuration change
+        for (key, value) in config_changes {
+            if let Err(e) = self.hyprctl.set_option(&key, &value).await {
+                eprintln!("Failed to apply config change {key}={value}: {e}");
+            }
+        }
+        
         Ok(())
     }
 

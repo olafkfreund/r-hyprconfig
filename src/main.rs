@@ -19,6 +19,7 @@ mod nixos;
 mod platform;
 mod theme;
 mod ui;
+mod undo;
 
 use app::App;
 

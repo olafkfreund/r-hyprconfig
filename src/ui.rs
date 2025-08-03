@@ -101,7 +101,7 @@ pub enum ExportFormatType {
     NixOS,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ConfigItem {
     pub key: String,
     pub value: String,
@@ -110,7 +110,7 @@ pub struct ConfigItem {
     pub suggestions: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ConfigDataType {
     Integer { min: Option<i32>, max: Option<i32> },
     Float { min: Option<f32>, max: Option<f32> },
@@ -2572,6 +2572,12 @@ impl UI {
             Span::styled("L", Style::default().fg(self.theme.accent_secondary).bold()),
             Span::styled(" Live Preview ", Style::default().fg(self.theme.fg_muted)),
             Span::raw("• "),
+            Span::styled("Ctrl+Z", Style::default().fg(self.theme.accent_secondary).bold()),
+            Span::styled(" Undo ", Style::default().fg(self.theme.fg_muted)),
+            Span::raw("• "),
+            Span::styled("Ctrl+Y", Style::default().fg(self.theme.accent_secondary).bold()),
+            Span::styled(" Redo ", Style::default().fg(self.theme.fg_muted)),
+            Span::raw("• "),
             Span::styled("Q/Esc", self.theme.error_style().bold()),
             Span::styled(" Quit", Style::default().fg(self.theme.fg_muted)),
         ];
@@ -4296,6 +4302,8 @@ impl UI {
             Line::from("  R                  Reload configuration"),
             Line::from("  A                  Add new item"),
             Line::from("  D                  Delete selected item"),
+            Line::from("  Ctrl+Z             Undo changes"),
+            Line::from("  Ctrl+Y             Redo changes"),
             Line::from("  E                  Export configuration (TOML)"),
             Line::from("  M                  Import configuration"),
             Line::from(if self.nixos_env.is_nixos {
