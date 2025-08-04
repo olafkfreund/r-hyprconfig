@@ -155,20 +155,30 @@ EOF
             default = {
               type = "app";
               program = "${r-hyprconfig}/bin/r-hyprconfig";
+              meta = {
+                description = "A modern TUI for managing Hyprland configuration";
+                license = pkgs.lib.licenses.mit;
+              };
             };
             r-hyprconfig = {
               type = "app";
               program = "${r-hyprconfig}/bin/r-hyprconfig";
+              meta = {
+                description = "A modern TUI for managing Hyprland configuration";
+                license = pkgs.lib.licenses.mit;
+              };
             };
-          };
-
-          # Development app shortcuts
-          apps.dev = {
-            type = "app";
-            program = "${pkgs.writeShellScript "dev-r-hyprconfig" ''
-              cd ${./.}
-              exec ${rustToolchain}/bin/cargo run -- "$@"
-            ''}";
+            dev = {
+              type = "app";
+              program = "${pkgs.writeShellScript "dev-r-hyprconfig" ''
+                cd ${./.}
+                exec ${rustToolchain}/bin/cargo run -- "$@"
+              ''}";
+              meta = {
+                description = "Development version of r-hyprconfig";
+                license = pkgs.lib.licenses.mit;
+              };
+            };
           };
 
           # Formatter for the flake
@@ -236,9 +246,5 @@ EOF
       # Top-level modules for easy access
       nixosModules.default = nixosModule;
       homeManagerModules.default = homeManagerModule;
-      
-      # Legacy compatibility - provide both naming conventions
-      nixosModule = nixosModule;
-      homeManagerModule = homeManagerModule;
     };
 }

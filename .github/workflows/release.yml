@@ -68,9 +68,10 @@ jobs:
         chmod +x pkg/usr/local/bin/r-hyprconfig
         
         # Build .deb package with fpm
+        VERSION=$(echo "${{ github.ref_name }}" | sed 's/^v//')
         fpm -s dir -t deb \
           -n r-hyprconfig \
-          -v ${{ github.ref_name }} \
+          -v "$VERSION" \
           --description "A modern TUI for visually configuring Hyprland" \
           --url "https://github.com/olafkfreund/r-hyprconfig" \
           --license "MIT" \
@@ -97,9 +98,10 @@ jobs:
         chmod +x pkg/usr/local/bin/r-hyprconfig
         
         # Build .rpm package with fpm
+        VERSION=$(echo "${{ github.ref_name }}" | sed 's/^v//')
         fpm -s dir -t rpm \
           -n r-hyprconfig \
-          -v ${{ github.ref_name }} \
+          -v "$VERSION" \
           --description "A modern TUI for visually configuring Hyprland" \
           --url "https://github.com/olafkfreund/r-hyprconfig" \
           --license "MIT" \
