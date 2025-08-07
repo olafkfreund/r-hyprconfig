@@ -215,6 +215,8 @@ EOF
           cfg = config.programs.r-hyprconfig;
           # Get the package from the current system
           r-hyprconfig = systemOutputs.packages.${pkgs.stdenv.hostPlatform.system}.r-hyprconfig;
+          # Use the correct TOML generator
+          tomlFormat = pkgs.formats.toml { };
         in
         {
           options.programs.r-hyprconfig = {
@@ -236,7 +238,7 @@ EOF
             
             # Optional: Generate config file from settings
             xdg.configFile."r-hyprconfig/config.toml" = mkIf (cfg.settings != { }) {
-              text = lib.generators.toTOML { } cfg.settings;
+              text = tomlFormat.generate "config.toml" cfg.settings;
             };
           };
         };
