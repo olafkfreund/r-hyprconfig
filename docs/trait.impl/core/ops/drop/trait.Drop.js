@@ -1,5 +1,5 @@
 (function() {
-    var implementors = Object.fromEntries([["r_hyprconfig",[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.88.0/core/ops/drop/trait.Drop.html\" title=\"trait core::ops::drop::Drop\">Drop</a> for <a class=\"struct\" href=\"r_hyprconfig/import_export/import/struct.ConfigImporter.html\" title=\"struct r_hyprconfig::import_export::import::ConfigImporter\">ConfigImporter</a>"]]]]);
+    var implementors = Object.fromEntries([["r_hyprconfig",[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.89.0/core/ops/drop/trait.Drop.html\" title=\"trait core::ops::drop::Drop\">Drop</a> for <a class=\"struct\" href=\"r_hyprconfig/import_export/import/struct.ConfigImporter.html\" title=\"struct r_hyprconfig::import_export::import::ConfigImporter\">ConfigImporter</a>"]]]]);
     if (window.register_implementors) {
         window.register_implementors(implementors);
     } else {

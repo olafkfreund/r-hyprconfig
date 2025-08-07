@@ -1,3 +1,2 @@
-var srcIndex = new Map(JSON.parse('[["r_hyprconfig",["",[["import_export",[],["export.rs","formats.rs","import.rs","mod.rs"]],["nixos",[],["config_discovery.rs","converter.rs","detection.rs","generator.rs","mod.rs","parser.rs"]],["platform",[],["distribution.rs","mod.rs","paths.rs"]]],["app.rs","batch.rs","config.rs","hyprctl.rs","main.rs","theme.rs","ui.rs","undo.rs"]]]]'));
-createSrcSidebar();
-//{"start":36,"fragment_lengths":[337]}
+createSrcSidebar('[["r_hyprconfig",["",[["import_export",[],["export.rs","formats.rs","import.rs","mod.rs"]],["nixos",[],["config_discovery.rs","converter.rs","detection.rs","generator.rs","mod.rs","parser.rs"]],["platform",[],["distribution.rs","mod.rs","paths.rs"]]],["app.rs","batch.rs","config.rs","hyprctl.rs","main.rs","theme.rs","ui.rs","undo.rs"]]]]');
+//{"start":19,"fragment_lengths":[337]}
