@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ConfigError","FileError","HyprConfigError","HyprctlError","RecoveryStrategy"],"struct":["RecoveryContext"],"type":["ConfigResult","FileResult","HyprctlResult","Result"]};

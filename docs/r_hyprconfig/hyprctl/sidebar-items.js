@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["AnimationsConfig","DecorationConfig","GeneralConfig","GesturesConfig","HyprCtl","HyprlandConfig","HyprlandKeybind","InputConfig","MiscConfig"]};
+window.SIDEBAR_ITEMS = {"struct":["AnimationsConfig","CacheEntry","CacheStats","DecorationConfig","GeneralConfig","GesturesConfig","HyprCtl","HyprctlCache","HyprlandConfig","HyprlandKeybind","InputConfig","MiscConfig"]};
