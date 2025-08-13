@@ -93,7 +93,8 @@ impl DistributionDetector {
     pub fn detect() -> Result<DistributionInfo> {
         // Check cache first
         {
-            let cache = DISTRIBUTION_CACHE.lock().unwrap();
+            let cache = DISTRIBUTION_CACHE.lock()
+                .map_err(|_| anyhow::anyhow!("Failed to acquire distribution cache lock"))?;
             if let Some(ref cached) = *cache {
                 return Ok(cached.clone());
             }
@@ -104,7 +105,8 @@ impl DistributionDetector {
 
         // Cache the result
         {
-            let mut cache = DISTRIBUTION_CACHE.lock().unwrap();
+            let mut cache = DISTRIBUTION_CACHE.lock()
+                .map_err(|_| anyhow::anyhow!("Failed to acquire distribution cache lock for write"))?;
             *cache = Some(info.clone());
         }
 
@@ -112,9 +114,11 @@ impl DistributionDetector {
     }
 
     /// Clear the detection cache (useful for testing)
-    pub fn clear_cache() {
-        let mut cache = DISTRIBUTION_CACHE.lock().unwrap();
+    pub fn clear_cache() -> Result<()> {
+        let mut cache = DISTRIBUTION_CACHE.lock()
+            .map_err(|_| anyhow::anyhow!("Failed to acquire distribution cache lock for clearing"))?;
         *cache = None;
+        Ok(())
     }
 
     /// Internal detection logic

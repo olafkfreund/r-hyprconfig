@@ -1,10 +1,14 @@
+use crate::errors::{FileError, FileResult, HyprConfigError, RecoveryContext, RecoveryStrategy};
+use crate::file_io::{FileOperations, FileUtils};
 use crate::nixos::{NixConfigType, NixOSEnvironment};
 use crate::theme::ColorScheme;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use tokio::fs as async_fs;
+use tokio::time::sleep;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -52,9 +56,10 @@ impl Config {
         let config_path = Self::get_config_path()?;
 
         if config_path.exists() {
-            let content = async_fs::read_to_string(&config_path)
+            // Use enhanced file I/O with automatic retry on failure
+            let content = FileUtils::resilient_read(&config_path)
                 .await
-                .context("Failed to read config file")?;
+                .map_err(|e| anyhow::anyhow!("Failed to read config file: {}", e))?;
 
             let mut config: Config =
                 toml::from_str(&content).context("Failed to parse config file")?;
@@ -73,18 +78,124 @@ impl Config {
     pub async fn save(&self) -> Result<()> {
         let config_path = Self::get_config_path()?;
 
-        // Create config directory if it doesn't exist
+        // Ensure config directory exists
         if let Some(parent) = config_path.parent() {
-            async_fs::create_dir_all(parent)
+            FileUtils::ensure_directory(parent)
                 .await
-                .context("Failed to create config directory")?;
+                .map_err(|e| anyhow::anyhow!("Failed to create config directory: {}", e))?;
         }
 
         let content = toml::to_string_pretty(self).context("Failed to serialize config")?;
 
-        async_fs::write(&config_path, content)
+        // Use enhanced file I/O with atomic operations and backup
+        FileUtils::safe_write(&config_path, &content)
             .await
-            .context("Failed to write config file")?;
+            .map_err(|e| anyhow::anyhow!("Failed to write config file: {}", e))?;
+
+        Ok(())
+    }
+
+    /// Save configuration with automatic backup and recovery
+    pub async fn save_with_recovery(&self) -> Result<(), HyprConfigError> {
+        let config_path = Self::get_config_path()
+            .map_err(|e| HyprConfigError::FileOperationError {
+                operation: "get config path".to_string(),
+                path: PathBuf::new(),
+                source: std::io::Error::new(std::io::ErrorKind::NotFound, e.to_string()),
+            })?;
+
+        let mut recovery_context = RecoveryContext::new("save configuration")
+            .with_retry(3, 250)
+            .with_fallback("Attempting to save to backup location".to_string());
+
+        // Create backup before attempting to save
+        let backup_path = if config_path.exists() {
+            let backup = config_path.with_extension("toml.backup");
+            if let Err(e) = async_fs::copy(&config_path, &backup).await {
+                eprintln!("Warning: Failed to create backup: {}", e);
+                None
+            } else {
+                Some(backup)
+            }
+        } else {
+            None
+        };
+
+        loop {
+            match self.attempt_save(&config_path).await {
+                Ok(()) => {
+                    // Success - clean up any backup
+                    if let Some(backup) = backup_path {
+                        let _ = async_fs::remove_file(backup).await; // Ignore errors
+                    }
+                    return Ok(());
+                }
+                Err(error) => {
+                    if let Some(strategy) = recovery_context.next_strategy() {
+                        match strategy {
+                            RecoveryStrategy::Retry { max_attempts, base_delay_ms } => {
+                                if recovery_context.attempt_count <= max_attempts {
+                                    let delay = base_delay_ms * recovery_context.attempt_count as u64;
+                                    eprintln!(
+                                        "Retrying config save (attempt {}/{}) after {}ms delay: {}",
+                                        recovery_context.attempt_count, max_attempts, delay, error
+                                    );
+                                    sleep(Duration::from_millis(delay)).await;
+                                    continue;
+                                }
+                            }
+                            RecoveryStrategy::Fallback { description } => {
+                                eprintln!("Using fallback strategy: {}", description);
+                                // Try saving to a temporary location
+                                let temp_path = config_path.with_extension("toml.temp");
+                                if self.attempt_save(&temp_path).await.is_ok() {
+                                    eprintln!("Successfully saved to temporary location: {}", temp_path.display());
+                                    return Ok(());
+                                }
+                            }
+                            RecoveryStrategy::Abort => {
+                                // Restore backup if we have one
+                                if let Some(backup) = backup_path {
+                                    if let Err(e) = async_fs::copy(&backup, &config_path).await {
+                                        eprintln!("Failed to restore backup: {}", e);
+                                    } else {
+                                        eprintln!("Configuration backup restored");
+                                    }
+                                }
+                                return Err(error);
+                            }
+                            _ => return Err(error),
+                        }
+                    } else {
+                        return Err(error);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Attempt to save configuration to a specific path
+    async fn attempt_save(&self, path: &Path) -> Result<(), HyprConfigError> {
+        // Create directory if needed
+        if let Some(parent) = path.parent() {
+            async_fs::create_dir_all(parent).await
+                .map_err(|e| HyprConfigError::file_operation("create directory", parent, e))?;
+        }
+
+        // Serialize configuration
+        let content = toml::to_string_pretty(self)
+            .map_err(|e| HyprConfigError::ConfigParsingError {
+                message: format!("Failed to serialize config: {}", e),
+            })?;
+
+        // Write file atomically by writing to temp file first
+        let temp_path = path.with_extension("toml.tmp");
+        async_fs::write(&temp_path, &content).await
+            .map_err(|e| HyprConfigError::file_operation("write temp file", &temp_path, e))?;
+
+        // Move temp file to final location (atomic on most filesystems)
+        async_fs::rename(&temp_path, path).await
+            .map_err(|e| HyprConfigError::file_operation("move temp file", path, e))?;
 
         Ok(())
     }
@@ -331,7 +442,10 @@ impl Config {
             // Check if this line contains a configuration option we want to update
             for (option, value) in options {
                 let option_prefix = if option.contains(':') {
-                    option.split_once(':').unwrap().1
+                    match option.split_once(':') {
+                        Some((_, suffix)) => suffix,
+                        None => continue, // Skip invalid option format
+                    }
                 } else {
                     option.as_str()
                 };
@@ -453,9 +567,9 @@ impl Config {
     }
 
     pub async fn parse_hyprland_config(&self) -> Result<HyprlandConfigFile> {
-        let content = async_fs::read_to_string(&self.hyprland_config_path)
+        let content = FileUtils::resilient_read(&self.hyprland_config_path)
             .await
-            .context("Failed to read Hyprland config file")?;
+            .map_err(|e| anyhow::anyhow!("Failed to read Hyprland config file: {}", e))?;
 
         HyprlandConfigFile::parse(&content)
     }

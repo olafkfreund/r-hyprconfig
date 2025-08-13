@@ -10,7 +10,9 @@ use ratatui::{
 };
 
 use crate::app::FocusedPanel;
+use crate::memory::{intern_string, CommonStrings};
 use crate::nixos::NixOSEnvironment;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum EditMode {
@@ -120,6 +122,110 @@ pub enum ConfigDataType {
     Keyword { options: Vec<String> },
 }
 
+impl ConfigItem {
+    pub fn new(
+        key: String,
+        value: String,
+        description: String,
+        data_type: ConfigDataType,
+    ) -> Self {
+        let suggestions = match &data_type {
+            ConfigDataType::Boolean => vec!["true".to_string(), "false".to_string()],
+            ConfigDataType::Keyword { options } => options.clone(),
+            _ => vec![],
+        };
+
+        Self {
+            key,
+            value,
+            description,
+            data_type,
+            suggestions,
+        }
+    }
+}
+
+/// Factory for creating commonly used ConfigItems - uses string interner internally for common strings
+pub struct ConfigItemFactory {
+    _common_strings: CommonStrings, // Keep for future use
+}
+
+impl ConfigItemFactory {
+    pub fn new() -> Self {
+        // Initialize common strings in the interner
+        let _common_strings = CommonStrings::new();
+        Self {
+            _common_strings,
+        }
+    }
+
+    /// Create a ConfigItem for gaps_in
+    pub fn gaps_in(&self, value: String) -> ConfigItem {
+        // Use interner for common values but return String for compatibility
+        ConfigItem::new(
+            "gaps_in".to_string(),
+            value,
+            "Inner gaps between windows".to_string(),
+            ConfigDataType::Integer {
+                min: Some(0),
+                max: Some(50),
+            },
+        )
+    }
+
+    /// Create a ConfigItem for gaps_out
+    pub fn gaps_out(&self, value: String) -> ConfigItem {
+        ConfigItem::new(
+            "gaps_out".to_string(),
+            value,
+            "Outer gaps between windows and monitor edges".to_string(),
+            ConfigDataType::Integer {
+                min: Some(0),
+                max: Some(50),
+            },
+        )
+    }
+
+    /// Create a ConfigItem for border_size
+    pub fn border_size(&self, value: String) -> ConfigItem {
+        ConfigItem::new(
+            "border_size".to_string(),
+            value,
+            "Border width in pixels".to_string(),
+            ConfigDataType::Integer {
+                min: Some(0),
+                max: Some(10),
+            },
+        )
+    }
+
+    /// Create a boolean ConfigItem
+    pub fn boolean_item(&self, key: &str, value: String, description: &str) -> ConfigItem {
+        ConfigItem::new(
+            key.to_string(),
+            value,
+            description.to_string(),
+            ConfigDataType::Boolean,
+        )
+    }
+
+    /// Create an integer ConfigItem
+    pub fn integer_item(&self, key: &str, value: String, description: &str, min: Option<i32>, max: Option<i32>) -> ConfigItem {
+        ConfigItem::new(
+            key.to_string(),
+            value,
+            description.to_string(),
+            ConfigDataType::Integer { min, max },
+        )
+    }
+}
+
+impl Default for ConfigItemFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct UI {
     pub general_list_state: ListState,
     pub input_list_state: ListState,
@@ -222,6 +328,11 @@ pub struct UI {
 }
 
 impl UI {
+    // ================================
+    // INITIALIZATION & BASIC METHODS
+    // ================================
+    
+    /// Create a new UI instance with default configuration
     pub fn new() -> Self {
         let mut ui = Self {
             general_list_state: ListState::default(),
@@ -364,6 +475,11 @@ impl UI {
         }
     }
 
+    // ================================
+    // CONFIGURATION INITIALIZATION
+    // ================================
+    
+    /// Initialize configuration items with default data
     fn initialize_config_items(&mut self) {
         // Initialize with default/placeholder values
         // These will be updated with real values from hyprctl in load_current_config
@@ -439,7 +555,6 @@ impl UI {
             },
         ];
 
-        // Input configuration items
         let input_items = vec![
             ConfigItem {
                 key: "kb_layout".to_string(),
@@ -832,6 +947,11 @@ impl UI {
             .or_insert(misc_items);
     }
 
+    // ================================
+    // CONFIGURATION DATA COLLECTION
+    // ================================
+    
+    /// Collect all configuration changes from the UI
     pub fn collect_all_config_changes(&self) -> std::collections::HashMap<String, String> {
         let mut options = std::collections::HashMap::new();
 
@@ -867,30 +987,17 @@ impl UI {
     }
 
     pub fn collect_window_rules(&self) -> Vec<String> {
-        let mut rules = Vec::new();
-
-        if let Some(rule_items) = self
-            .config_items
+        self.config_items
             .get(&crate::app::FocusedPanel::WindowRules)
-        {
-            for item in rule_items {
-                rules.push(item.value.clone());
-            }
-        }
-
-        rules
+            .map(|items| items.iter().map(|item| item.value.clone()).collect())
+            .unwrap_or_default()
     }
 
     pub fn collect_layer_rules(&self) -> Vec<String> {
-        let mut rules = Vec::new();
-
-        if let Some(rule_items) = self.config_items.get(&crate::app::FocusedPanel::LayerRules) {
-            for item in rule_items {
-                rules.push(item.value.clone());
-            }
-        }
-
-        rules
+        self.config_items
+            .get(&crate::app::FocusedPanel::LayerRules)
+            .map(|items| items.iter().map(|item| item.value.clone()).collect())
+            .unwrap_or_default()
     }
 
     fn display_value_to_config_line(&self, display_value: &str) -> Option<String> {
@@ -1040,7 +1147,7 @@ impl UI {
                 );
 
                 bind_items.push(crate::ui::ConfigItem {
-                    key: key.clone(),
+                    key,
                     value: display_value,
                     description: format!(
                         "Keybind: {} {} -> {}",
@@ -1065,7 +1172,7 @@ impl UI {
                 let key = format!("window_rule_{i}");
 
                 rule_items.push(crate::ui::ConfigItem {
-                    key: key.clone(),
+                    key,
                     value: rule.clone(),
                     description: format!("Window rule: {rule}"),
                     data_type: crate::ui::ConfigDataType::String,
@@ -1088,7 +1195,7 @@ impl UI {
                 let key = format!("layer_rule_{i}");
 
                 rule_items.push(crate::ui::ConfigItem {
-                    key: key.clone(),
+                    key,
                     value: rule.clone(),
                     description: format!("Layer rule: {rule}"),
                     data_type: crate::ui::ConfigDataType::String,
@@ -1101,7 +1208,7 @@ impl UI {
                 let key = format!("workspace_rule_{i}");
 
                 rule_items.push(crate::ui::ConfigItem {
-                    key: key.clone(),
+                    key,
                     value: rule.clone(),
                     description: format!("Workspace rule: {rule}"),
                     data_type: crate::ui::ConfigDataType::String,
@@ -1792,7 +1899,7 @@ impl UI {
                     let key = format!("bind_{i}");
 
                     bind_items.push(ConfigItem {
-                        key: key.clone(),
+                        key,
                         value: keybind.display_string(),
                         description: format!(
                             "Keybind: {} {}",
@@ -1914,7 +2021,7 @@ impl UI {
                     };
 
                     rule_items.push(ConfigItem {
-                        key: key.clone(),
+                        key,
                         value: rule.clone(),
                         description,
                         data_type: ConfigDataType::String,
@@ -1965,7 +2072,7 @@ impl UI {
                     };
 
                     rule_items.push(ConfigItem {
-                        key: key.clone(),
+                        key,
                         value: rule.clone(),
                         description,
                         data_type: ConfigDataType::String,
@@ -1981,7 +2088,7 @@ impl UI {
                             let key = format!("workspace_rule_{i}");
 
                             rule_items.push(ConfigItem {
-                                key: key.clone(),
+                                key,
                                 value: rule.clone(),
                                 description: format!("Workspace rule: {rule}"),
                                 data_type: ConfigDataType::String,
@@ -2078,6 +2185,11 @@ impl UI {
         }
     }
 
+    // ================================
+    // RENDERING & UI COMPONENTS
+    // ================================
+    
+    /// Main render function for the entire UI
     pub fn render(&mut self, f: &mut Frame, app_state: (FocusedPanel, bool)) {
         let size = f.area();
         let (_, debug) = app_state;
@@ -4434,7 +4546,7 @@ impl UI {
             Line::from(vec![Span::styled(
                 "⚠️ File Locations",
                 Style::default()
-                    .fg(self.theme.warning_style().fg.unwrap())
+                    .fg(self.theme.warning_style().fg.unwrap_or(ratatui::style::Color::Yellow))
                     .bold(),
             )]),
             Line::from(
@@ -5224,12 +5336,13 @@ impl UI {
         }
 
         // Get the hyprctl key for this configuration option
-        let hypr_key = self.get_hyprctl_key(&self.current_tab, key);
-        if hypr_key.is_none() {
-            // No hyprctl mapping available for this setting
-            return Ok(());
-        }
-        let hypr_key = hypr_key.unwrap();
+        let hypr_key = match self.get_hyprctl_key(&self.current_tab, key) {
+            Some(key) => key,
+            None => {
+                // No hyprctl mapping available for this setting
+                return Ok(());
+            }
+        };
 
         let now = std::time::Instant::now();
 

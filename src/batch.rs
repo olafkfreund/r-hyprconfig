@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::config::Config;
+use crate::file_io::{FileOperations, FileUtils};
 use crate::hyprctl::HyprCtl;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -14,8 +15,8 @@ pub struct BatchProfile {
     pub name: String,
     pub description: Option<String>,
     pub config_paths: Vec<PathBuf>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub last_modified: chrono::DateTime<chrono::Utc>,
+    pub created_at: std::time::SystemTime,
+    pub last_modified: std::time::SystemTime,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,19 +54,19 @@ pub struct BatchManager {
 }
 
 impl BatchManager {
-    pub fn new(config_dir: PathBuf) -> Result<Self> {
+    pub async fn new(config_dir: PathBuf) -> Result<Self> {
         let mut manager = Self {
             profiles: HashMap::new(),
             config_dir,
         };
 
         // Load existing profiles
-        manager.load_profiles()?;
+        manager.load_profiles().await?;
 
         Ok(manager)
     }
 
-    pub fn create_profile(
+    pub async fn create_profile(
         &mut self,
         name: String,
         description: Option<String>,
@@ -85,27 +86,28 @@ impl BatchManager {
             }
         }
 
+        let now = std::time::SystemTime::now();
         let profile = BatchProfile {
             name: name.clone(),
             description,
             config_paths,
-            created_at: chrono::Utc::now(),
-            last_modified: chrono::Utc::now(),
+            created_at: now.into(),
+            last_modified: now.into(),
         };
 
         self.profiles.insert(name, profile);
-        self.save_profiles()?;
+        self.save_profiles().await?;
 
         Ok(())
     }
 
-    pub fn delete_profile(&mut self, name: &str) -> Result<()> {
+    pub async fn delete_profile(&mut self, name: &str) -> Result<()> {
         if !self.profiles.contains_key(name) {
             return Err(anyhow!("Profile '{}' does not exist", name));
         }
 
         self.profiles.remove(name);
-        self.save_profiles()?;
+        self.save_profiles().await?;
 
         Ok(())
     }
@@ -191,7 +193,7 @@ impl BatchManager {
 
         match operation.operation_type {
             BatchOperationType::Backup => {
-                self.create_backup(config_path)?;
+                self.create_backup(config_path).await?;
                 changes_applied = 1;
             }
             BatchOperationType::Apply | BatchOperationType::Merge | BatchOperationType::Replace => {
@@ -269,16 +271,11 @@ impl BatchManager {
         Ok(changes_applied)
     }
 
-    fn create_backup(&self, config_path: &Path) -> Result<()> {
-        let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
-        let backup_name = format!(
-            "{}.backup.{}",
-            config_path.file_name().unwrap().to_string_lossy(),
-            timestamp
-        );
-        let backup_path = config_path.parent().unwrap().join(backup_name);
-
-        std::fs::copy(config_path, backup_path)?;
+    async fn create_backup(&self, config_path: &Path) -> Result<()> {
+        let file_ops = FileOperations::new();
+        file_ops.create_backup(config_path)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create backup: {}", e))?;
         Ok(())
     }
 
@@ -302,24 +299,31 @@ impl BatchManager {
         Ok(())
     }
 
-    fn load_profiles(&mut self) -> Result<()> {
+    async fn load_profiles(&mut self) -> Result<()> {
         let profiles_file = self.config_dir.join("batch_profiles.json");
 
         if profiles_file.exists() {
-            let content = std::fs::read_to_string(&profiles_file)?;
+            let content = FileUtils::resilient_read(&profiles_file)
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to read profiles file: {}", e))?;
             self.profiles = serde_json::from_str(&content)?;
         }
 
         Ok(())
     }
 
-    fn save_profiles(&self) -> Result<()> {
+    async fn save_profiles(&self) -> Result<()> {
         // Ensure config directory exists
-        std::fs::create_dir_all(&self.config_dir)?;
+        FileUtils::ensure_directory(&self.config_dir)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create config directory: {}", e))?;
 
         let profiles_file = self.config_dir.join("batch_profiles.json");
         let content = serde_json::to_string_pretty(&self.profiles)?;
-        std::fs::write(profiles_file, content)?;
+        
+        FileUtils::safe_write(&profiles_file, &content)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to write profiles file: {}", e))?;
 
         Ok(())
     }
@@ -451,10 +455,10 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    #[test]
-    fn test_batch_profile_creation() {
+    #[tokio::test]
+    async fn test_batch_profile_creation() {
         let temp_dir = TempDir::new().unwrap();
-        let mut manager = BatchManager::new(temp_dir.path().to_path_buf()).unwrap();
+        let mut manager = BatchManager::new(temp_dir.path().to_path_buf()).await.unwrap();
 
         let config_paths = vec![
             temp_dir.path().join("config1.conf"),
@@ -470,7 +474,7 @@ mod tests {
             "test_profile".to_string(),
             Some("Test profile description".to_string()),
             config_paths,
-        );
+        ).await;
 
         assert!(result.is_ok());
         assert!(manager.get_profile("test_profile").is_some());

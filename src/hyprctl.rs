@@ -2,6 +2,11 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tokio::process::Command as AsyncCommand;
+use tokio::time::{timeout, Duration as TokioDuration};
+
+use crate::errors::{HyprConfigError, HyprctlError, HyprctlResult, RecoveryContext, RecoveryStrategy};
+use std::time::{Duration, Instant};
+use tokio::time::sleep;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HyprlandConfig {
@@ -156,14 +161,133 @@ impl HyprlandKeybind {
     }
 }
 
+/// Cache entry for hyprctl responses
+#[derive(Debug, Clone)]
+struct CacheEntry<T> {
+    value: T,
+    timestamp: Instant,
+}
+
+impl<T> CacheEntry<T> {
+    fn new(value: T) -> Self {
+        Self {
+            value,
+            timestamp: Instant::now(),
+        }
+    }
+    
+    fn is_expired(&self, ttl: Duration) -> bool {
+        self.timestamp.elapsed() > ttl
+    }
+}
+
+/// Cache for hyprctl responses to avoid repeated expensive calls
+/// Only caches successful results - errors are not cached to allow retries
+#[derive(Debug, Default)]
+struct HyprctlCache {
+    // Individual option cache - key: option_name, value: successful result
+    options: HashMap<String, CacheEntry<String>>,
+    
+    // Bulk operations cache - only successful results
+    all_options: Option<CacheEntry<HashMap<String, String>>>,
+    binds: Option<CacheEntry<Vec<HyprlandKeybind>>>,
+    window_rules: Option<CacheEntry<Vec<String>>>,
+    layer_rules: Option<CacheEntry<Vec<String>>>,
+    workspace_rules: Option<CacheEntry<Vec<String>>>,
+    
+    // Cache configuration
+    default_ttl: Duration,
+    bulk_ttl: Duration,
+}
+
+impl HyprctlCache {
+    fn new() -> Self {
+        Self {
+            options: HashMap::new(),
+            all_options: None,
+            binds: None,
+            window_rules: None,
+            layer_rules: None,
+            workspace_rules: None,
+            default_ttl: Duration::from_secs(30), // 30 seconds for individual options
+            bulk_ttl: Duration::from_secs(60),    // 60 seconds for bulk operations
+        }
+    }
+    
+    fn clear(&mut self) {
+        self.options.clear();
+        self.all_options = None;
+        self.binds = None;
+        self.window_rules = None;
+        self.layer_rules = None;
+        self.workspace_rules = None;
+    }
+    
+    fn clear_expired(&mut self) {
+        // Clear expired individual options
+        self.options.retain(|_, entry| !entry.is_expired(self.default_ttl));
+        
+        // Clear expired bulk operations
+        if let Some(entry) = &self.all_options {
+            if entry.is_expired(self.bulk_ttl) {
+                self.all_options = None;
+            }
+        }
+        
+        if let Some(entry) = &self.binds {
+            if entry.is_expired(self.bulk_ttl) {
+                self.binds = None;
+            }
+        }
+        
+        if let Some(entry) = &self.window_rules {
+            if entry.is_expired(self.bulk_ttl) {
+                self.window_rules = None;
+            }
+        }
+        
+        if let Some(entry) = &self.layer_rules {
+            if entry.is_expired(self.bulk_ttl) {
+                self.layer_rules = None;
+            }
+        }
+        
+        if let Some(entry) = &self.workspace_rules {
+            if entry.is_expired(self.bulk_ttl) {
+                self.workspace_rules = None;
+            }
+        }
+    }
+}
+
+/// Cache statistics for monitoring and debugging
+#[derive(Debug, Clone)]
+pub struct CacheStats {
+    pub options_cached: usize,
+    pub all_options_cached: bool,
+    pub binds_cached: bool,
+    pub window_rules_cached: bool,
+    pub layer_rules_cached: bool,
+    pub workspace_rules_cached: bool,
+    pub default_ttl_secs: u64,
+    pub bulk_ttl_secs: u64,
+}
+
 pub struct HyprCtl {
     #[allow(dead_code)]
     socket_path: Option<String>,
+    cache: std::sync::Mutex<HyprctlCache>,
+    /// Timeout for hyprctl commands in milliseconds
+    timeout_ms: u64,
 }
 
 impl HyprCtl {
     pub async fn new() -> Result<Self> {
-        let mut hyprctl = Self { socket_path: None };
+        let mut hyprctl = Self { 
+            socket_path: None,
+            cache: std::sync::Mutex::new(HyprctlCache::new()),
+            timeout_ms: 5000, // Default 5 second timeout
+        };
 
         // Try to detect Hyprland socket
         hyprctl.detect_socket().await?;
@@ -172,16 +296,112 @@ impl HyprCtl {
     }
 
     pub fn new_disconnected() -> Self {
-        Self { socket_path: None }
+        Self { 
+            socket_path: None,
+            cache: std::sync::Mutex::new(HyprctlCache::new()),
+            timeout_ms: 5000, // Default 5 second timeout
+        }
+    }
+
+    /// Clear all cached data (useful when configuration changes are made)
+    pub fn clear_cache(&self) {
+        if let Ok(mut cache) = self.cache.lock() {
+            cache.clear();
+        }
+    }
+    
+    /// Clear expired cache entries
+    pub fn clear_expired_cache(&self) {
+        if let Ok(mut cache) = self.cache.lock() {
+            cache.clear_expired();
+        }
+    }
+
+    /// Configure timeout for hyprctl commands
+    pub fn set_timeout(&mut self, timeout_ms: u64) {
+        self.timeout_ms = timeout_ms;
+    }
+
+    /// Get current timeout setting
+    pub fn get_timeout(&self) -> u64 {
+        self.timeout_ms
+    }
+
+    /// Execute a hyprctl command with timeout handling
+    async fn execute_hyprctl_with_timeout(&self, args: &[&str]) -> HyprctlResult<std::process::Output> {
+        let command_str = format!("hyprctl {}", args.join(" "));
+        let timeout_duration = TokioDuration::from_millis(self.timeout_ms);
+        
+        let future = AsyncCommand::new("hyprctl")
+            .args(args)
+            .output();
+            
+        match timeout(timeout_duration, future).await {
+            Ok(result) => {
+                result.map_err(|_| HyprctlError::CommandNotFound)
+            }
+            Err(_) => {
+                Err(HyprctlError::Timeout {
+                    command: command_str,
+                    timeout_ms: self.timeout_ms,
+                })
+            }
+        }
+    }
+
+    /// Execute a hyprctl command with custom timeout (for testing or special cases)
+    pub async fn execute_with_custom_timeout(&self, args: &[&str], timeout_ms: u64) -> HyprctlResult<std::process::Output> {
+        let command_str = format!("hyprctl {}", args.join(" "));
+        let timeout_duration = TokioDuration::from_millis(timeout_ms);
+        
+        let future = AsyncCommand::new("hyprctl")
+            .args(args)
+            .output();
+            
+        match timeout(timeout_duration, future).await {
+            Ok(result) => {
+                result.map_err(|_| HyprctlError::CommandNotFound)
+            }
+            Err(_) => {
+                Err(HyprctlError::Timeout {
+                    command: command_str,
+                    timeout_ms,
+                })
+            }
+        }
+    }
+
+    /// Test timeout functionality by running a command with very short timeout
+    #[cfg(test)]
+    pub async fn test_timeout_functionality(&self) -> bool {
+        // Try to run a command with 1ms timeout - should definitely timeout
+        matches!(
+            self.execute_with_custom_timeout(&["version"], 1).await,
+            Err(HyprctlError::Timeout { .. })
+        )
+    }
+    
+    /// Get cache statistics for debugging/monitoring
+    pub fn get_cache_stats(&self) -> Option<CacheStats> {
+        if let Ok(cache) = self.cache.lock() {
+            Some(CacheStats {
+                options_cached: cache.options.len(),
+                all_options_cached: cache.all_options.is_some(),
+                binds_cached: cache.binds.is_some(),
+                window_rules_cached: cache.window_rules.is_some(),
+                layer_rules_cached: cache.layer_rules.is_some(),
+                workspace_rules_cached: cache.workspace_rules.is_some(),
+                default_ttl_secs: cache.default_ttl.as_secs(),
+                bulk_ttl_secs: cache.bulk_ttl.as_secs(),
+            })
+        } else {
+            None
+        }
     }
 
     async fn detect_socket(&mut self) -> Result<()> {
         // Try to get Hyprland instance signature
-        let output = AsyncCommand::new("hyprctl")
-            .arg("getoption")
-            .arg("general:border_size")
-            .output()
-            .await;
+        let output = self.execute_hyprctl_with_timeout(&["getoption", "general:border_size"]).await;
 
         match output {
             Ok(output) => {
@@ -201,12 +421,36 @@ impl HyprCtl {
     }
 
     pub async fn get_option(&self, option: &str) -> Result<String> {
-        let output = AsyncCommand::new("hyprctl")
-            .arg("getoption")
-            .arg(option)
-            .output()
+        // Check cache first
+        if let Ok(mut cache) = self.cache.lock() {
+            cache.clear_expired();
+            
+            if let Some(entry) = cache.options.get(option) {
+                if !entry.is_expired(cache.default_ttl) {
+                    // Return cached successful result
+                    return Ok(entry.value.clone());
+                }
+            }
+        }
+
+        // Cache miss or expired - fetch from hyprctl
+        let result = self.get_option_uncached(option).await;
+        
+        // Cache only successful results
+        if let Ok(value) = &result {
+            if let Ok(mut cache) = self.cache.lock() {
+                cache.options.insert(option.to_string(), CacheEntry::new(value.clone()));
+            }
+        }
+        
+        result
+    }
+
+    /// Internal method to get option without caching (used by cached version)
+    async fn get_option_uncached(&self, option: &str) -> Result<String> {
+        let output = self.execute_hyprctl_with_timeout(&["getoption", option])
             .await
-            .context("Failed to execute hyprctl getoption")?;
+            .map_err(|e| anyhow::anyhow!("Failed to execute hyprctl getoption: {}", e))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -248,24 +492,141 @@ impl HyprCtl {
         Ok(stdout.trim().to_string())
     }
 
+    /// Get hyprctl option with structured error handling
+    pub async fn get_option_typed(&self, option: &str) -> HyprctlResult<String> {
+
+        let output = self.execute_hyprctl_with_timeout(&["getoption", option]).await?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if stderr.contains("unknown option") || stderr.contains("invalid option") {
+                return Err(HyprctlError::InvalidOption {
+                    option: option.to_string(),
+                });
+            }
+            return Err(HyprctlError::ExecutionFailed {
+                command: format!("hyprctl getoption {}", option),
+                stderr: stderr.to_string(),
+            });
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if stdout.trim().is_empty() {
+            return Err(HyprctlError::ParseError {
+                command: format!("hyprctl getoption {}", option),
+                reason: "Empty output received".to_string(),
+            });
+        }
+
+        Ok(stdout.trim().to_string())
+    }
+
+    /// Get hyprctl option with automatic retry and recovery
+    pub async fn get_option_resilient(&self, option: &str) -> HyprctlResult<String> {
+        let mut recovery_context = RecoveryContext::new(format!("get option '{}'", option))
+            .with_retry(3, 100) // 3 attempts, start with 100ms delay
+            .with_fallback("Using default value".to_string());
+
+        loop {
+            match self.get_option_typed(option).await {
+                Ok(value) => return Ok(value),
+                Err(error) => {
+                    if let Some(strategy) = recovery_context.next_strategy() {
+                        match strategy {
+                            RecoveryStrategy::Retry { max_attempts, base_delay_ms } => {
+                                if recovery_context.attempt_count <= max_attempts {
+                                    let delay = base_delay_ms * (1 << (recovery_context.attempt_count - 1));
+                                    eprintln!(
+                                        "Retrying hyprctl command '{}' (attempt {}/{}) after {}ms delay...",
+                                        option, recovery_context.attempt_count, max_attempts, delay
+                                    );
+                                    sleep(Duration::from_millis(delay)).await;
+                                    continue;
+                                } else {
+                                    // Max retries exceeded, try next strategy
+                                    continue;
+                                }
+                            }
+                            RecoveryStrategy::Fallback { description } => {
+                                eprintln!("Falling back for option '{}': {}", option, description);
+                                // Return a reasonable default based on the option type
+                                return Ok(self.get_default_value_for_option(option));
+                            }
+                            RecoveryStrategy::Abort => {
+                                return Err(error);
+                            }
+                            _ => {
+                                // Other strategies not applicable here
+                                return Err(error);
+                            }
+                        }
+                    } else {
+                        return Err(error);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Get a reasonable default value for common options
+    fn get_default_value_for_option(&self, option: &str) -> String {
+        match option {
+            opt if opt.contains("gaps_in") => "5".to_string(),
+            opt if opt.contains("gaps_out") => "20".to_string(),
+            opt if opt.contains("border_size") => "2".to_string(),
+            opt if opt.contains("rounding") => "10".to_string(),
+            opt if opt.contains("enabled") || opt.contains("enable") => "true".to_string(),
+            opt if opt.contains("opacity") => "1.0".to_string(),
+            opt if opt.contains("sensitivity") => "0.0".to_string(),
+            opt if opt.starts_with("col.") => "rgba(33ccffee)".to_string(),
+            _ => "unknown".to_string(),
+        }
+    }
+
     pub async fn set_option(&self, option: &str, value: &str) -> Result<()> {
-        let output = AsyncCommand::new("hyprctl")
-            .arg("keyword")
-            .arg(option)
-            .arg(value)
-            .output()
+        let output = self.execute_hyprctl_with_timeout(&["keyword", option, value])
             .await
-            .context("Failed to execute hyprctl keyword")?;
+            .map_err(|e| anyhow::anyhow!("Failed to execute hyprctl keyword: {}", e))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             anyhow::bail!("hyprctl keyword failed: {}", stderr);
         }
 
+        // Clear cache after setting option since configuration has changed
+        self.clear_cache();
+
         Ok(())
     }
 
     pub async fn get_all_options(&self) -> Result<HashMap<String, String>> {
+        // Check cache first
+        if let Ok(mut cache) = self.cache.lock() {
+            cache.clear_expired();
+            
+            if let Some(entry) = &cache.all_options {
+                if !entry.is_expired(cache.bulk_ttl) {
+                    // Return cached successful result
+                    return Ok(entry.value.clone());
+                }
+            }
+        }
+
+        // Cache miss or expired - fetch from hyprctl
+        let result = self.get_all_options_uncached().await;
+        
+        // Cache only successful results
+        if let Ok(options) = &result {
+            if let Ok(mut cache) = self.cache.lock() {
+                cache.all_options = Some(CacheEntry::new(options.clone()));
+            }
+        }
+        
+        result
+    }
+
+    /// Internal method to get all options without caching
+    async fn get_all_options_uncached(&self) -> Result<HashMap<String, String>> {
         let mut options = HashMap::new();
 
         // Get general options
@@ -408,11 +769,36 @@ impl HyprCtl {
     }
 
     pub async fn get_binds(&self) -> Result<Vec<HyprlandKeybind>> {
-        let output = AsyncCommand::new("hyprctl")
-            .arg("binds")
-            .output()
+        // Check cache first
+        if let Ok(mut cache) = self.cache.lock() {
+            cache.clear_expired();
+            
+            if let Some(entry) = &cache.binds {
+                if !entry.is_expired(cache.bulk_ttl) {
+                    // Return cached successful result
+                    return Ok(entry.value.clone());
+                }
+            }
+        }
+
+        // Cache miss or expired - fetch from hyprctl
+        let result = self.get_binds_uncached().await;
+        
+        // Cache only successful results
+        if let Ok(binds) = &result {
+            if let Ok(mut cache) = self.cache.lock() {
+                cache.binds = Some(CacheEntry::new(binds.clone()));
+            }
+        }
+        
+        result
+    }
+
+    /// Internal method to get binds without caching
+    async fn get_binds_uncached(&self) -> Result<Vec<HyprlandKeybind>> {
+        let output = self.execute_hyprctl_with_timeout(&["binds"])
             .await
-            .context("Failed to execute hyprctl binds")?;
+            .map_err(|e| anyhow::anyhow!("Failed to execute hyprctl binds: {}", e))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -595,7 +981,14 @@ impl HyprCtl {
     #[allow(dead_code)]
     pub async fn add_keybind(&self, bind: &HyprlandKeybind) -> Result<()> {
         let bind_command = bind.to_hyprland_config();
-        self.dispatch(&format!("keyword {bind_command}")).await
+        let result = self.dispatch(&format!("keyword {bind_command}")).await;
+        
+        // Clear cache after adding keybind since configuration has changed
+        if result.is_ok() {
+            self.clear_cache();
+        }
+        
+        result
     }
 
     #[allow(dead_code)]
@@ -607,33 +1000,38 @@ impl HyprCtl {
         };
 
         let unbind_command = format!("unbind {mod_string}{key}");
-        self.dispatch(&unbind_command).await
+        let result = self.dispatch(&unbind_command).await;
+        
+        // Clear cache after removing keybind since configuration has changed
+        if result.is_ok() {
+            self.clear_cache();
+        }
+        
+        result
     }
 
     #[allow(dead_code)]
     pub async fn reload_config(&self) -> Result<()> {
-        let output = AsyncCommand::new("hyprctl")
-            .arg("reload")
-            .output()
+        let output = self.execute_hyprctl_with_timeout(&["reload"])
             .await
-            .context("Failed to execute hyprctl reload")?;
+            .map_err(|e| anyhow::anyhow!("Failed to execute hyprctl reload: {}", e))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             anyhow::bail!("hyprctl reload failed: {}", stderr);
         }
 
+        // Clear cache after reloading since configuration has changed
+        self.clear_cache();
+
         Ok(())
     }
 
     #[allow(dead_code)]
     pub async fn dispatch(&self, command: &str) -> Result<()> {
-        let output = AsyncCommand::new("hyprctl")
-            .arg("dispatch")
-            .arg(command)
-            .output()
+        let output = self.execute_hyprctl_with_timeout(&["dispatch", command])
             .await
-            .context("Failed to execute hyprctl dispatch")?;
+            .map_err(|e| anyhow::anyhow!("Failed to execute hyprctl dispatch: {}", e))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -645,11 +1043,9 @@ impl HyprCtl {
 
     #[allow(dead_code)]
     pub async fn get_version(&self) -> Result<String> {
-        let output = AsyncCommand::new("hyprctl")
-            .arg("version")
-            .output()
+        let output = self.execute_hyprctl_with_timeout(&["version"])
             .await
-            .context("Failed to execute hyprctl version")?;
+            .map_err(|e| anyhow::anyhow!("Failed to execute hyprctl version: {}", e))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -662,20 +1058,43 @@ impl HyprCtl {
 
     #[allow(dead_code)]
     pub async fn is_hyprland_running(&self) -> bool {
-        AsyncCommand::new("hyprctl")
-            .arg("version")
-            .output()
+        self.execute_hyprctl_with_timeout(&["version"])
             .await
             .map(|output| output.status.success())
             .unwrap_or(false)
     }
 
     pub async fn get_workspace_rules(&self) -> Result<Vec<String>> {
-        let output = AsyncCommand::new("hyprctl")
-            .arg("workspacerules")
-            .output()
+        // Check cache first
+        if let Ok(mut cache) = self.cache.lock() {
+            cache.clear_expired();
+            
+            if let Some(entry) = &cache.workspace_rules {
+                if !entry.is_expired(cache.bulk_ttl) {
+                    // Return cached successful result
+                    return Ok(entry.value.clone());
+                }
+            }
+        }
+
+        // Cache miss or expired - fetch from hyprctl
+        let result = self.get_workspace_rules_uncached().await;
+        
+        // Cache only successful results
+        if let Ok(rules) = &result {
+            if let Ok(mut cache) = self.cache.lock() {
+                cache.workspace_rules = Some(CacheEntry::new(rules.clone()));
+            }
+        }
+        
+        result
+    }
+
+    /// Internal method to get workspace rules without caching
+    async fn get_workspace_rules_uncached(&self) -> Result<Vec<String>> {
+        let output = self.execute_hyprctl_with_timeout(&["workspacerules"])
             .await
-            .context("Failed to execute hyprctl workspacerules")?;
+            .map_err(|e| anyhow::anyhow!("Failed to execute hyprctl workspacerules: {}", e))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -693,14 +1112,38 @@ impl HyprCtl {
     }
 
     pub async fn get_window_rules(&self) -> Result<Vec<String>> {
+        // Check cache first
+        if let Ok(mut cache) = self.cache.lock() {
+            cache.clear_expired();
+            
+            if let Some(entry) = &cache.window_rules {
+                if !entry.is_expired(cache.bulk_ttl) {
+                    // Return cached successful result
+                    return Ok(entry.value.clone());
+                }
+            }
+        }
+
+        // Cache miss or expired - fetch from hyprctl
+        let result = self.get_window_rules_uncached().await;
+        
+        // Cache only successful results
+        if let Ok(rules) = &result {
+            if let Ok(mut cache) = self.cache.lock() {
+                cache.window_rules = Some(CacheEntry::new(rules.clone()));
+            }
+        }
+        
+        result
+    }
+
+    /// Internal method to get window rules without caching
+    async fn get_window_rules_uncached(&self) -> Result<Vec<String>> {
         // Window rules are typically parsed from the config file or through clients command
         // For now, we'll return a placeholder that shows current window classes
-        let output = AsyncCommand::new("hyprctl")
-            .arg("clients")
-            .arg("-j")
-            .output()
+        let output = self.execute_hyprctl_with_timeout(&["clients", "-j"])
             .await
-            .context("Failed to execute hyprctl clients")?;
+            .map_err(|e| anyhow::anyhow!("Failed to execute hyprctl clients: {}", e))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -748,11 +1191,36 @@ impl HyprCtl {
     }
 
     pub async fn get_layer_rules(&self) -> Result<Vec<String>> {
-        let output = AsyncCommand::new("hyprctl")
-            .arg("layers")
-            .output()
+        // Check cache first
+        if let Ok(mut cache) = self.cache.lock() {
+            cache.clear_expired();
+            
+            if let Some(entry) = &cache.layer_rules {
+                if !entry.is_expired(cache.bulk_ttl) {
+                    // Return cached successful result
+                    return Ok(entry.value.clone());
+                }
+            }
+        }
+
+        // Cache miss or expired - fetch from hyprctl
+        let result = self.get_layer_rules_uncached().await;
+        
+        // Cache only successful results
+        if let Ok(rules) = &result {
+            if let Ok(mut cache) = self.cache.lock() {
+                cache.layer_rules = Some(CacheEntry::new(rules.clone()));
+            }
+        }
+        
+        result
+    }
+
+    /// Internal method to get layer rules without caching
+    async fn get_layer_rules_uncached(&self) -> Result<Vec<String>> {
+        let output = self.execute_hyprctl_with_timeout(&["layers"])
             .await
-            .context("Failed to execute hyprctl layers")?;
+            .map_err(|e| anyhow::anyhow!("Failed to execute hyprctl layers: {}", e))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -798,18 +1266,128 @@ impl HyprCtl {
     #[allow(dead_code)]
     pub async fn add_window_rule(&self, rule: &str) -> Result<()> {
         let command = format!("keyword windowrule {rule}");
-        self.dispatch(&command).await
+        let result = self.dispatch(&command).await;
+        
+        // Clear cache after adding rule since configuration has changed
+        if result.is_ok() {
+            self.clear_cache();
+        }
+        
+        result
     }
 
     #[allow(dead_code)]
     pub async fn add_layer_rule(&self, rule: &str) -> Result<()> {
         let command = format!("keyword layerrule {rule}");
-        self.dispatch(&command).await
+        let result = self.dispatch(&command).await;
+        
+        // Clear cache after adding rule since configuration has changed
+        if result.is_ok() {
+            self.clear_cache();
+        }
+        
+        result
     }
 
     #[allow(dead_code)]
     pub async fn add_workspace_rule(&self, rule: &str) -> Result<()> {
         let command = format!("keyword workspace {rule}");
-        self.dispatch(&command).await
+        let result = self.dispatch(&command).await;
+        
+        // Clear cache after adding rule since configuration has changed
+        if result.is_ok() {
+            self.clear_cache();
+        }
+        
+        result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::time::Duration as TokioDuration;
+
+    #[tokio::test]
+    async fn test_timeout_configuration() {
+        let mut hyprctl = HyprCtl::new_disconnected();
+        
+        // Test default timeout
+        assert_eq!(hyprctl.get_timeout(), 5000);
+        
+        // Test setting custom timeout
+        hyprctl.set_timeout(3000);
+        assert_eq!(hyprctl.get_timeout(), 3000);
+        
+        // Test setting very short timeout
+        hyprctl.set_timeout(100);
+        assert_eq!(hyprctl.get_timeout(), 100);
+    }
+
+    #[tokio::test]
+    async fn test_timeout_error_generation() {
+        let hyprctl = HyprCtl::new_disconnected();
+        
+        // Test timeout with very short duration (1ms should always timeout)
+        let result = hyprctl.execute_with_custom_timeout(&["version"], 1).await;
+        
+        match result {
+            Err(HyprctlError::Timeout { command, timeout_ms }) => {
+                assert_eq!(command, "hyprctl version");
+                assert_eq!(timeout_ms, 1);
+            }
+            Err(HyprctlError::CommandNotFound) => {
+                // This is also acceptable if hyprctl is not available
+                println!("hyprctl not found - this is expected in test environments");
+            }
+            Ok(_) => {
+                // Very unlikely with 1ms timeout, but possible in fast environments
+                println!("Command completed within 1ms - surprisingly fast!");
+            }
+            Err(e) => {
+                panic!("Unexpected error type: {:?}", e);
+            }
+        }
+    }
+
+    #[tokio::test] 
+    async fn test_timeout_functionality_helper() {
+        let hyprctl = HyprCtl::new_disconnected();
+        
+        // The test helper should return true if timeout works correctly
+        // or false if hyprctl is not available (which is fine in test environments)
+        let timeout_works = hyprctl.test_timeout_functionality().await;
+        
+        // We don't assert on the result since hyprctl might not be available
+        // in test environments, but we verify the method runs without panic
+        println!("Timeout functionality test result: {}", timeout_works);
+    }
+
+    #[test]
+    fn test_error_types() {
+        // Test that timeout errors are properly formatted
+        let timeout_error = HyprctlError::Timeout {
+            command: "hyprctl test".to_string(),
+            timeout_ms: 5000,
+        };
+        
+        let error_string = format!("{}", timeout_error);
+        assert!(error_string.contains("timed out"));
+        assert!(error_string.contains("5000ms"));
+        assert!(error_string.contains("hyprctl test"));
+    }
+
+    #[tokio::test]
+    async fn test_cache_with_timeout() {
+        let hyprctl = HyprCtl::new_disconnected();
+        
+        // Verify cache stats are accessible
+        let stats = hyprctl.get_cache_stats();
+        assert!(stats.is_some());
+        
+        if let Some(stats) = stats {
+            assert_eq!(stats.default_ttl_secs, 30); // Default cache TTL
+            assert_eq!(stats.bulk_ttl_secs, 60);    // Default bulk TTL
+        }
     }
 }

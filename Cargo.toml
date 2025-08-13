@@ -1,6 +1,6 @@
 [package]
 name = "r-hyprconfig"
-version = "1.2.0"
+version = "1.3.0"
 edition = "2021"
 description = "A modern TUI for managing Hyprland configuration"
 license = "MIT"
@@ -41,12 +41,14 @@ assets = [
 ]
 
 [dependencies]
+async-trait = "0.1"
 ratatui = "0.28"
 crossterm = "0.28"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.0", features = ["full"] }
 anyhow = "1.0"
+thiserror = "2.0"
 clap = { version = "4.5", features = ["derive"] }
 toml = "0.8"
 dirs = "5.0"

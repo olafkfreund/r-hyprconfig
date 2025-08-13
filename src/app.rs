@@ -15,8 +15,12 @@ use std::{
 
 use crate::{
     batch::BatchManager,
+    commands::CommandDispatcher,
     config::Config,
+    errors::{ConfigError, ConfigResult, HyprConfigError, HyprctlError},
     hyprctl::HyprCtl,
+    memory::{get_common_pools, get_interner_stats},
+    state::StateManager,
     ui::UI,
     undo::{ConfigSnapshot, UndoManager},
 };
@@ -104,9 +108,56 @@ pub struct App {
     pub undo_manager: UndoManager,
     pub last_tick: Instant,
     pub tick_rate: Duration,
+    
+    // New structured state management
+    pub state_manager: StateManager,
+    
+    // Command dispatcher for event handling
+    pub command_dispatcher: CommandDispatcher,
 }
 
 impl App {
+    // ================================
+    // CORE APPLICATION METHODS
+    // ================================
+
+    // New state management methods
+    
+    /// Get current panel from state manager
+    pub fn get_current_panel(&self) -> FocusedPanel {
+        self.state_manager.current_panel()
+    }
+    
+    /// Set current panel using state manager
+    pub fn set_current_panel(&mut self, panel: FocusedPanel) {
+        self.state_manager.set_current_panel(panel);
+        // Keep the existing UI field in sync for compatibility
+        self.focused_panel = panel;
+    }
+    
+    /// Check if any modal is open using state manager
+    pub fn has_modal_open(&self) -> bool {
+        self.state_manager.has_modal_open()
+    }
+    
+    /// Show popup using structured state management
+    pub fn show_popup(&mut self, message: impl Into<String>) {
+        self.state_manager.dialogs.show_popup(message);
+        // Keep existing UI field in sync for compatibility  
+        self.ui.show_popup = true;
+        self.ui.popup_message = self.state_manager.dialogs.popup_message.clone();
+    }
+    
+    /// Close all modals using state manager
+    pub fn close_all_modals(&mut self) {
+        self.state_manager.close_all_modals();
+        // Sync with existing UI fields for compatibility
+        self.ui.show_popup = false;
+        self.ui.show_save_dialog = false;
+        self.ui.show_help = false;
+    }
+
+    /// Test save functionality without running the TUI
     pub async fn test_save_functionality(&mut self) -> Result<()> {
         eprintln!("=== Testing Save Functionality ===");
 
@@ -142,6 +193,13 @@ impl App {
         let mut ui = UI::new();
 
         ui.set_theme(config.theme.clone());
+
+        // Initialize common strings in the string interner for memory optimization
+        if debug {
+            eprintln!("Initializing memory optimization systems...");
+            let _common_strings = crate::memory::CommonStrings::new();
+            eprintln!("Initializing structured state management...");
+        }
         if let Err(e) = ui.load_current_config(&hyprctl).await {
             eprintln!("Warning: Failed to load current configuration: {e}");
             eprintln!("Using default placeholder values.");
@@ -151,7 +209,7 @@ impl App {
         let config_dir = dirs::config_dir()
             .ok_or_else(|| anyhow::anyhow!("Cannot determine config directory"))?
             .join("r-hyprconfig");
-        let batch_manager = BatchManager::new(config_dir)?;
+        let batch_manager = BatchManager::new(config_dir).await?;
 
         Ok(Self {
             state: AppState::Running,
@@ -164,6 +222,8 @@ impl App {
             undo_manager: UndoManager::default(),
             last_tick: Instant::now(),
             tick_rate: Duration::from_millis(50), // Faster tick rate for responsive preview
+            state_manager: StateManager::new(),
+            command_dispatcher: CommandDispatcher::new(),
         })
     }
 
@@ -232,177 +292,37 @@ impl App {
         Ok(())
     }
 
-    async fn handle_key_event(&mut self, key: KeyCode) -> Result<()> {
-        // Handle popup states first
-        if self.ui.show_import_dialog {
-            return self.handle_import_dialog_key(key).await;
+    // ================================
+    // EVENT HANDLING METHODS
+    // ================================
+
+    /// Main key event handler - routes to appropriate sub-handlers
+    /// New streamlined key event handler using Command pattern
+    pub async fn handle_key_event(&mut self, key: KeyCode) -> Result<()> {
+        use crate::commands::CommandResult;
+        
+        // Dispatch to command system
+        let result = CommandDispatcher::dispatch(self, key).await?;
+        
+        // Handle any result-specific logic if needed
+        match result {
+            CommandResult::Handled | CommandResult::Stop => {
+                // Command was handled successfully
+            }
+            CommandResult::NotHandled => {
+                // No command handled this key - could log in debug mode
+                #[cfg(debug_assertions)]
+                eprintln!("Unhandled key in main dispatcher: {:?}", key);
+            }
+            CommandResult::Continue => {
+                // Continue processing (shouldn't happen at this level)
+            }
         }
-
-        if self.ui.show_export_dialog {
-            return self.handle_export_dialog_key(key).await;
-        }
-
-        if self.ui.show_nixos_export_dialog {
-            return self.handle_nixos_export_dialog_key(key).await;
-        }
-
-        if self.ui.show_batch_dialog {
-            return self.handle_batch_dialog_key(key).await;
-        }
-
-        if self.ui.show_save_dialog {
-            return self.handle_save_dialog_key(key).await;
-        }
-
-        if self.ui.show_reload_dialog {
-            return self.handle_reload_dialog_key(key).await;
-        }
-
-        if self.ui.show_popup {
-            return self.handle_popup_key(key).await;
-        }
-
-        if self.ui.show_help {
-            return self.handle_help_key(key).await;
-        }
-
-        if self.ui.show_preview_dialog {
-            return self.handle_preview_dialog_key(key).await;
-        }
-
-        if self.ui.search_mode {
-            return self.handle_search_key(key).await;
-        }
-
-        if self.ui.edit_mode != crate::ui::EditMode::None {
-            return self.handle_edit_key(key).await;
-        }
-
-        // Handle normal navigation
-        match key {
-            KeyCode::Char('q') | KeyCode::Esc => {
-                self.state = AppState::Quitting;
-            }
-            KeyCode::Tab | KeyCode::Right => {
-                self.ui.next_tab();
-                self.focused_panel = self.ui.current_tab;
-            }
-            KeyCode::BackTab | KeyCode::Left => {
-                self.ui.previous_tab();
-                self.focused_panel = self.ui.current_tab;
-            }
-            KeyCode::Up => {
-                self.ui.scroll_up();
-
-                // Trigger live preview if enabled
-                if self.ui.is_preview_mode() {
-                    if let Some(item) = self.ui.get_selected_item() {
-                        let item_key = item.key.clone();
-                        let item_value = item.value.clone();
-                        if let Err(e) = self
-                            .ui
-                            .handle_preview_change(&item_key, &item_value, &self.hyprctl)
-                            .await
-                        {
-                            eprintln!("Preview error: {}", e);
-                        }
-                    }
-                }
-            }
-            KeyCode::Down => {
-                self.ui.scroll_down();
-
-                // Trigger live preview if enabled
-                if self.ui.is_preview_mode() {
-                    if let Some(item) = self.ui.get_selected_item() {
-                        let item_key = item.key.clone();
-                        let item_value = item.value.clone();
-                        if let Err(e) = self
-                            .ui
-                            .handle_preview_change(&item_key, &item_value, &self.hyprctl)
-                            .await
-                        {
-                            eprintln!("Preview error: {}", e);
-                        }
-                    }
-                }
-            }
-            KeyCode::PageUp => {
-                self.ui.prev_page();
-            }
-            KeyCode::PageDown => {
-                self.ui.next_page();
-            }
-            KeyCode::Enter => {
-                // Take snapshot before starting to edit
-                if let Some(item) = self.ui.get_selected_item() {
-                    self.take_config_snapshot(&format!("Edit {}", item.key));
-                }
-                self.ui.start_editing().await?;
-            }
-            KeyCode::Char('r') | KeyCode::Char('R') => {
-                self.ui.show_reload_dialog = true;
-            }
-            KeyCode::Char('s') | KeyCode::Char('S') => {
-                self.ui.show_save_dialog = true;
-            }
-            // Additional functionality to be re-implemented
-            KeyCode::Char('a') | KeyCode::Char('A') => {
-                // TODO: Add item functionality
-            }
-            KeyCode::Char('d') | KeyCode::Char('D') => {
-                self.show_delete_item_dialog().await;
-            }
-            KeyCode::Char('i') | KeyCode::Char('I') => {
-                self.show_add_item_dialog().await;
-            }
-            KeyCode::Char('/') => {
-                self.ui.start_search_debounced();
-            }
-            KeyCode::Char('t') | KeyCode::Char('T') => {
-                let new_theme = self.ui.next_theme();
-                self.config.theme = new_theme;
-                // Save theme to config file
-                if let Err(e) = self.config.save().await {
-                    eprintln!("Warning: Failed to save theme to config: {e}");
-                }
-                self.ui.show_popup = true;
-                self.ui.popup_message = format!("Theme changed to: {}", self.config.theme);
-            }
-            KeyCode::Char('e') | KeyCode::Char('E') => {
-                self.show_export_dialog().await;
-            }
-            KeyCode::Char('m') | KeyCode::Char('M') => {
-                self.show_import_dialog().await;
-            }
-            KeyCode::F(1) | KeyCode::Char('?') => {
-                self.ui.toggle_help();
-            }
-            KeyCode::Char('n') | KeyCode::Char('N') => {
-                self.show_enhanced_preview().await;
-            }
-            KeyCode::Char('p') | KeyCode::Char('P') => {
-                self.show_setting_preview().await;
-            }
-            KeyCode::Char('b') | KeyCode::Char('B') => {
-                self.show_batch_dialog().await;
-            }
-            KeyCode::Char('l') | KeyCode::Char('L') => {
-                self.ui.toggle_preview_mode();
-                let status = if self.ui.is_preview_mode() {
-                    "Live preview enabled! Changes will be applied immediately."
-                } else {
-                    "Live preview disabled. Press Enter to apply changes."
-                };
-                self.ui.show_popup = true;
-                self.ui.popup_message = status.to_string();
-            }
-            _ => {}
-        }
+        
         Ok(())
     }
 
-    async fn handle_save_dialog_key(&mut self, key: KeyCode) -> Result<()> {
+    pub async fn handle_save_dialog_key(&mut self, key: KeyCode) -> Result<()> {
         match key {
             KeyCode::Char('y') | KeyCode::Char('Y') => {
                 self.ui.show_save_dialog = false;
@@ -418,7 +338,7 @@ impl App {
         Ok(())
     }
 
-    async fn handle_nixos_export_dialog_key(&mut self, key: KeyCode) -> Result<()> {
+    pub async fn handle_nixos_export_dialog_key(&mut self, key: KeyCode) -> Result<()> {
         match key {
             KeyCode::Char('1') => {
                 self.ui.nixos_export_config_type = crate::nixos::NixConfigType::HomeManager;
@@ -450,7 +370,7 @@ impl App {
         Ok(())
     }
 
-    async fn handle_reload_dialog_key(&mut self, key: KeyCode) -> Result<()> {
+    pub async fn handle_reload_dialog_key(&mut self, key: KeyCode) -> Result<()> {
         match key {
             KeyCode::Char('y') | KeyCode::Char('Y') => {
                 self.ui.show_reload_dialog = false;
@@ -466,7 +386,7 @@ impl App {
         Ok(())
     }
 
-    async fn handle_popup_key(&mut self, key: KeyCode) -> Result<()> {
+    pub async fn handle_popup_key(&mut self, key: KeyCode) -> Result<()> {
         // Check if this is a deletion confirmation popup
         if let Some((panel, item_key)) = &self.ui.pending_deletion {
             match key {
@@ -504,7 +424,7 @@ impl App {
         Ok(())
     }
 
-    async fn handle_edit_key(&mut self, key: KeyCode) -> Result<()> {
+    pub async fn handle_edit_key(&mut self, key: KeyCode) -> Result<()> {
         use crate::ui::EditMode;
 
         // Check preview mode and get editing key before match to avoid borrowing issues
@@ -516,6 +436,7 @@ impl App {
         let mut preview_value = String::new();
 
         match &mut self.ui.edit_mode {
+            // ---- TEXT INPUT EDITING ----
             EditMode::Text {
                 current_value,
                 cursor_pos,
@@ -582,6 +503,7 @@ impl App {
                     _ => {}
                 }
             }
+            // ---- BOOLEAN TOGGLE EDITING ----
             EditMode::Boolean { current_value } => {
                 match key {
                     KeyCode::Enter => {
@@ -609,6 +531,7 @@ impl App {
                     _ => {}
                 }
             }
+            // ---- SELECTION FROM OPTIONS ----
             EditMode::Select { options, selected } => {
                 match key {
                     KeyCode::Enter => {
@@ -652,6 +575,7 @@ impl App {
                     _ => {}
                 }
             }
+            // ---- SLIDER/NUMERIC INPUT ----
             EditMode::Slider {
                 current_value,
                 min,
@@ -724,6 +648,7 @@ impl App {
                     _ => {}
                 }
             }
+            // ---- KEYBIND CONFIGURATION ----
             EditMode::Keybind {
                 modifiers,
                 key: key_field,
@@ -799,6 +724,7 @@ impl App {
                     _ => {}
                 }
             }
+            // ---- RULE CONFIGURATION ----
             EditMode::Rule {
                 rule_type: _,
                 pattern,
@@ -869,7 +795,7 @@ impl App {
         Ok(())
     }
 
-    async fn handle_help_key(&mut self, key: KeyCode) -> Result<()> {
+    pub async fn handle_help_key(&mut self, key: KeyCode) -> Result<()> {
         match key {
             KeyCode::Esc | KeyCode::F(1) | KeyCode::Char('?') => {
                 self.ui.toggle_help();
@@ -897,7 +823,7 @@ impl App {
         Ok(())
     }
 
-    async fn handle_search_key(&mut self, key: KeyCode) -> Result<()> {
+    pub async fn handle_search_key(&mut self, key: KeyCode) -> Result<()> {
         match key {
             KeyCode::Esc => {
                 self.ui.cancel_search_debounced();
@@ -967,6 +893,11 @@ impl App {
         Ok(())
     }
 
+    // ================================
+    // CONFIGURATION MANAGEMENT
+    // ================================
+
+    /// Save current configuration changes to disk
     async fn save_config(&mut self) -> Result<()> {
         self.config.save().await?;
 
@@ -1298,8 +1229,12 @@ impl App {
         Ok(export_path.to_string_lossy().to_string())
     }
 
-    // Batch configuration management methods
-    async fn show_batch_dialog(&mut self) {
+    // ================================
+    // DIALOG MANAGEMENT METHODS
+    // ================================
+
+    /// Show the batch operations dialog
+    pub async fn show_batch_dialog(&mut self) {
         // Initialize with default state
         self.ui.batch_dialog_mode = crate::ui::BatchDialogMode::ManageProfiles;
         self.ui.batch_selected_profile = None;
@@ -1307,7 +1242,7 @@ impl App {
         self.ui.show_batch_dialog = true;
     }
 
-    async fn handle_batch_dialog_key(&mut self, key: KeyCode) -> Result<()> {
+    pub async fn handle_batch_dialog_key(&mut self, key: KeyCode) -> Result<()> {
         match self.ui.batch_dialog_mode {
             crate::ui::BatchDialogMode::ManageProfiles => {
                 self.handle_batch_manage_profiles_key(key).await
@@ -1321,7 +1256,7 @@ impl App {
         }
     }
 
-    async fn handle_batch_manage_profiles_key(&mut self, key: KeyCode) -> Result<()> {
+    pub async fn handle_batch_manage_profiles_key(&mut self, key: KeyCode) -> Result<()> {
         match key {
             KeyCode::Char('1') => {
                 // Create new profile
@@ -1343,7 +1278,7 @@ impl App {
         Ok(())
     }
 
-    async fn handle_batch_select_operation_key(&mut self, key: KeyCode) -> Result<()> {
+    pub async fn handle_batch_select_operation_key(&mut self, key: KeyCode) -> Result<()> {
         match key {
             KeyCode::Char('1') => {
                 self.ui.batch_operation_type = crate::batch::BatchOperationType::Apply;
@@ -1369,7 +1304,7 @@ impl App {
         Ok(())
     }
 
-    async fn handle_batch_execute_operation_key(&mut self, key: KeyCode) -> Result<()> {
+    pub async fn handle_batch_execute_operation_key(&mut self, key: KeyCode) -> Result<()> {
         match key {
             KeyCode::Enter => {
                 // Execute the batch operation
@@ -1396,7 +1331,7 @@ impl App {
             profile_name.clone(),
             Some("Auto-generated profile".to_string()),
             config_paths,
-        ) {
+        ).await {
             Ok(_) => {
                 self.ui.show_popup = true;
                 self.ui.popup_message = format!("Profile '{profile_name}' created successfully!");
@@ -1411,7 +1346,7 @@ impl App {
 
     async fn delete_batch_profile(&mut self) {
         if let Some(profile_name) = &self.ui.batch_selected_profile {
-            match self.batch_manager.delete_profile(profile_name) {
+            match self.batch_manager.delete_profile(profile_name).await {
                 Ok(_) => {
                     self.ui.show_popup = true;
                     self.ui.popup_message =
@@ -1473,7 +1408,12 @@ impl App {
         }
     }
 
-    async fn show_setting_preview(&mut self) {
+    // ================================
+    // PREVIEW FUNCTIONALITY
+    // ================================
+
+    /// Show detailed preview of configuration setting changes
+    pub async fn show_setting_preview(&mut self) {
         // Get the currently selected setting based on focused panel
         let panel = self.focused_panel;
         let selected_index = match panel {
@@ -1572,7 +1512,7 @@ impl App {
         }
     }
 
-    async fn handle_preview_dialog_key(&mut self, key: KeyCode) -> Result<()> {
+    pub async fn handle_preview_dialog_key(&mut self, key: KeyCode) -> Result<()> {
         match key {
             KeyCode::Esc => {
                 self.ui.close_preview_dialog();
@@ -1609,6 +1549,11 @@ impl App {
         Ok(())
     }
 
+    // ================================
+    // CONFIGURATION VALIDATION
+    // ================================
+
+    /// Validate all configuration changes before applying
     async fn validate_config_changes(
         &self,
         config_changes: &std::collections::HashMap<String, String>,
@@ -1661,20 +1606,20 @@ impl App {
         match key {
             // Integer values
             k if k.contains("gaps_") || k.contains("border_size") || k.contains("rounding") => {
-                if value.parse::<i32>().is_err() {
-                    return Err(anyhow::anyhow!("must be a valid integer"));
-                }
-                let val = value.parse::<i32>().unwrap();
+                let val = match value.parse::<i32>() {
+                    Ok(v) => v,
+                    Err(_) => return Err(anyhow::anyhow!("must be a valid integer")),
+                };
                 if val < 0 {
                     return Err(anyhow::anyhow!("must be non-negative"));
                 }
             }
             // Float values
             k if k.contains("opacity") || k.contains("sensitivity") => {
-                if value.parse::<f32>().is_err() {
-                    return Err(anyhow::anyhow!("must be a valid decimal number"));
-                }
-                let val = value.parse::<f32>().unwrap();
+                let val = match value.parse::<f32>() {
+                    Ok(v) => v,
+                    Err(_) => return Err(anyhow::anyhow!("must be a valid decimal number")),
+                };
                 if k.contains("opacity") && !(0.0..=1.0).contains(&val) {
                     return Err(anyhow::anyhow!("opacity must be between 0.0 and 1.0"));
                 }
@@ -1702,6 +1647,53 @@ impl App {
                 // For unknown options, just check they're not empty
                 if value.trim().is_empty() {
                     return Err(anyhow::anyhow!("value cannot be empty"));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validate configuration option with structured error handling
+    async fn validate_config_option_typed(&self, key: &str, value: &str) -> ConfigResult<()> {
+        // Basic validation for common configuration options
+        match key {
+            // Integer values
+            k if k.contains("gaps_") || k.contains("border_size") || k.contains("rounding") => {
+                let val = value.parse::<i32>()
+                    .map_err(|_| ConfigError::invalid_value(k, value, "must be a valid integer"))?;
+                
+                if val < 0 {
+                    return Err(ConfigError::invalid_value(k, value, "must be non-negative"));
+                }
+            }
+            // Float values
+            k if k.contains("opacity") || k.contains("sensitivity") => {
+                let val = value.parse::<f32>()
+                    .map_err(|_| ConfigError::invalid_value(k, value, "must be a valid decimal number"))?;
+                
+                if k.contains("opacity") && !(0.0..=1.0).contains(&val) {
+                    return Err(ConfigError::invalid_value(k, value, "opacity must be between 0.0 and 1.0"));
+                }
+            }
+            // Boolean values
+            k if k.contains("enabled") || k.contains("disable_") => {
+                if !matches!(value.to_lowercase().as_str(), "true" | "false" | "1" | "0" | "yes" | "no") {
+                    return Err(ConfigError::invalid_value(k, value, "must be a boolean value (true/false)"));
+                }
+            }
+            // Color values
+            k if k.starts_with("col.") => {
+                if !value.starts_with("rgb") 
+                    && !value.starts_with("rgba") 
+                    && !value.starts_with("#") {
+                    return Err(ConfigError::invalid_value(k, value, "must be a valid color (rgb(), rgba(), or #hex)"));
+                }
+            }
+            _ => {
+                // For unknown options, just check they're not empty
+                if value.trim().is_empty() {
+                    return Err(ConfigError::invalid_value(key, value, "value cannot be empty"));
                 }
             }
         }
@@ -1830,8 +1822,12 @@ impl App {
         Ok(())
     }
 
-    // Undo/Redo handlers
-    async fn handle_undo(&mut self) -> Result<()> {
+    // ================================
+    // UNDO/REDO FUNCTIONALITY
+    // ================================
+
+    /// Handle undo operation - restore previous configuration state
+    pub async fn handle_undo(&mut self) -> Result<()> {
         if let Some(snapshot) = self.undo_manager.undo() {
             // Restore the configuration state from the snapshot
             self.ui.config_items = snapshot.config_items;
@@ -1853,7 +1849,7 @@ impl App {
         Ok(())
     }
 
-    async fn handle_redo(&mut self) -> Result<()> {
+    pub async fn handle_redo(&mut self) -> Result<()> {
         if let Some(snapshot) = self.undo_manager.redo() {
             // Restore the configuration state from the snapshot
             self.ui.config_items = snapshot.config_items;
@@ -1876,7 +1872,7 @@ impl App {
     }
 
     /// Take a snapshot before making changes
-    fn take_config_snapshot(&mut self, description: &str) {
+    pub fn take_config_snapshot(&mut self, description: &str) {
         let snapshot = ConfigSnapshot::from_ui(&self.ui, Some(description.to_string()));
         self.undo_manager.take_snapshot(snapshot);
     }
@@ -1895,8 +1891,12 @@ impl App {
         Ok(())
     }
 
-    // New import/export dialog handlers
-    async fn show_import_dialog(&mut self) {
+    // ================================
+    // IMPORT/EXPORT FUNCTIONALITY
+    // ================================
+
+    /// Show the configuration import dialog
+    pub async fn show_import_dialog(&mut self) {
         self.ui.show_import_dialog = true;
         self.ui.import_export_mode = crate::ui::ImportExportMode::SelectSource;
         self.ui.selected_import_source = crate::ui::ImportSourceType::LocalFile;
@@ -1904,7 +1904,7 @@ impl App {
         self.ui.import_list_state.select(Some(0));
     }
 
-    async fn show_export_dialog(&mut self) {
+    pub async fn show_export_dialog(&mut self) {
         self.ui.show_export_dialog = true;
         self.ui.import_export_mode = crate::ui::ImportExportMode::SelectFormat;
         self.ui.selected_export_format = crate::ui::ExportFormatType::HyprlandConf;
@@ -1912,7 +1912,7 @@ impl App {
         self.ui.export_list_state.select(Some(0));
     }
 
-    async fn handle_import_dialog_key(&mut self, key: KeyCode) -> Result<()> {
+    pub async fn handle_import_dialog_key(&mut self, key: KeyCode) -> Result<()> {
         use crate::ui::{ImportExportMode, ImportSourceType};
 
         match self.ui.import_export_mode {
@@ -1975,7 +1975,7 @@ impl App {
         Ok(())
     }
 
-    async fn handle_export_dialog_key(&mut self, key: KeyCode) -> Result<()> {
+    pub async fn handle_export_dialog_key(&mut self, key: KeyCode) -> Result<()> {
         use crate::ui::{ExportFormatType, ImportExportMode};
 
         match self.ui.import_export_mode {
@@ -2054,7 +2054,7 @@ impl App {
         Ok(())
     }
 
-    async fn show_enhanced_preview(&mut self) {
+    pub async fn show_enhanced_preview(&mut self) {
         // Enhanced preview that shows current setting details, not just NixOS export
         let panel = self.focused_panel;
         let selected_index = match panel {
@@ -2308,7 +2308,7 @@ impl App {
         self.ui.show_export_dialog = false;
     }
 
-    async fn show_add_item_dialog(&mut self) {
+    pub async fn show_add_item_dialog(&mut self) {
         // Show dialog to add new configuration items based on current panel
         match self.ui.current_tab {
             crate::app::FocusedPanel::Binds => {
@@ -2337,7 +2337,7 @@ impl App {
         }
     }
 
-    async fn show_delete_item_dialog(&mut self) {
+    pub async fn show_delete_item_dialog(&mut self) {
         // Show dialog to delete the currently selected item
         match self.ui.current_tab {
             crate::app::FocusedPanel::Binds => {
@@ -2382,5 +2382,108 @@ impl App {
                 self.ui.popup_message = "Delete Item: Not available for this panel. Use 'D' key in Binds, Window Rules, or Layer Rules panels.".to_string();
             }
         }
+    }
+
+    // =============================================================================
+    // ERROR HANDLING & RECOVERY METHODS
+    // =============================================================================
+
+    /// Display error message with recovery options to user
+    fn display_error_with_recovery(&mut self, error: &crate::errors::HyprConfigError) {
+        use crate::errors::HyprConfigError;
+        
+        let (title, message, recovery_hint) = match error {
+            HyprConfigError::HyprctlError { message } => {
+                ("Hyprland Communication Error", 
+                 message.clone(), 
+                 Some("Try restarting Hyprland or check if it's running"))
+            },
+            HyprConfigError::ConfigValidationError { option, message } => {
+                ("Configuration Error", 
+                 format!("Invalid value for '{}': {}", option, message),
+                 Some("Check the configuration documentation for valid values"))
+            },
+            HyprConfigError::FileOperationError { operation, path, .. } => {
+                ("File Operation Failed", 
+                 format!("Failed to {} file: {}", operation, path.display()),
+                 Some("Check file permissions and disk space"))
+            },
+            HyprConfigError::PermissionError { message } => {
+                ("Permission Denied", 
+                 message.clone(),
+                 Some("Run as administrator or check file permissions"))
+            },
+            HyprConfigError::NixOSError { message } => {
+                ("NixOS Configuration Error", 
+                 message.clone(),
+                 Some("Check NixOS configuration syntax and rebuild"))
+            },
+            HyprConfigError::ImportExportError { operation, message } => {
+                ("Import/Export Error", 
+                 format!("{}: {}", operation, message),
+                 Some("Verify file format and path accessibility"))
+            },
+            _ => {
+                ("Error", error.to_string(), None)
+            }
+        };
+
+        // Display error popup
+        self.ui.show_popup = true;
+        self.ui.popup_message = if let Some(hint) = recovery_hint {
+            format!("{}\n\n{}\n\nRecovery suggestion:\n{}", title, message, hint)
+        } else {
+            format!("{}\n\n{}", title, message)
+        };
+    }
+
+    /// Handle error with automatic recovery attempts
+    pub async fn handle_error_with_recovery(&mut self, error: crate::errors::HyprConfigError, operation: &str) {
+        use crate::errors::{HyprConfigError, RecoveryContext, RecoveryStrategy};
+        
+        // Log the error for debugging
+        if self.debug {
+            eprintln!("Error during '{}': {:?}", operation, error);
+        }
+
+        // Try automatic recovery for certain error types
+        match &error {
+            HyprConfigError::HyprctlError { .. } => {
+                // Try to reconnect to Hyprland
+                match crate::hyprctl::HyprCtl::new().await {
+                    Ok(_) => {
+                        self.ui.show_popup = true;
+                        self.ui.popup_message = "Reconnected to Hyprland successfully!".to_string();
+                        return;
+                    },
+                    Err(_) => {
+                        // Connection failed, show error to user
+                    }
+                }
+            },
+            HyprConfigError::ConfigValidationError { .. } => {
+                // For validation errors, just show the error - no automatic recovery
+            },
+            HyprConfigError::FileOperationError { operation: op, path, .. } => {
+                // Try creating parent directories if it's a write operation
+                if op.contains("write") || op.contains("create") {
+                    if let Some(parent) = path.parent() {
+                        if let Err(_) = tokio::fs::create_dir_all(parent).await {
+                            // Directory creation failed, show original error
+                        } else {
+                            self.ui.show_popup = true;
+                            self.ui.popup_message = format!("Created missing directory: {}", parent.display());
+                            return;
+                        }
+                    }
+                }
+            },
+            _ => {
+                // No specific recovery for other error types
+            }
+        }
+
+        // If automatic recovery didn't work, show error to user
+        self.display_error_with_recovery(&error);
     }
 }

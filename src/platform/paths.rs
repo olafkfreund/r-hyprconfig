@@ -92,7 +92,8 @@ impl ConfigPathManager {
         let cache = PATH_CACHE.get_or_init(|| Mutex::new(None));
 
         {
-            let cached = cache.lock().unwrap();
+            let cached = cache.lock()
+                .map_err(|_| anyhow::anyhow!("Failed to acquire path cache lock"))?;
             if let Some(ref paths) = *cached {
                 return Ok(paths.clone());
             }
@@ -102,7 +103,8 @@ impl ConfigPathManager {
         let paths = Self::resolve_paths(&distribution)?;
 
         {
-            let mut cached = cache.lock().unwrap();
+            let mut cached = cache.lock()
+                .map_err(|_| anyhow::anyhow!("Failed to acquire path cache lock for write"))?;
             *cached = Some(paths.clone());
         }
 
@@ -110,11 +112,13 @@ impl ConfigPathManager {
     }
 
     /// Clear the path cache (useful for testing)
-    pub fn clear_cache() {
+    pub fn clear_cache() -> Result<()> {
         if let Some(cache) = PATH_CACHE.get() {
-            let mut cached = cache.lock().unwrap();
+            let mut cached = cache.lock()
+                .map_err(|_| anyhow::anyhow!("Failed to acquire path cache lock for clearing"))?;
             *cached = None;
         }
+        Ok(())
     }
 
     /// Resolve paths based on distribution information

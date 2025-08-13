@@ -12,11 +12,16 @@ use clap::Parser;
 
 mod app;
 mod batch;
+mod commands;
 mod config;
+mod errors;
+mod file_io;
 mod hyprctl;
 mod import_export;
+mod memory;
 mod nixos;
 mod platform;
+mod state;
 mod theme;
 mod ui;
 mod undo;
